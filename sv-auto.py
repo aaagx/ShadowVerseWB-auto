@@ -20,17 +20,18 @@ import ctypes
 from ctypes import wintypes
 
 # 随从的位置坐标（720P分辨率）
-follower_positions = [
-    (942, 398),
-    (863, 398),
-    (784, 398),
-    (705, 398),
-    (626, 398),
-    (547, 398),
-    (468, 398),
-    (389, 398),
+follower_positions =[
     (310, 398),
+    (389, 398),
+    (468, 398),
+    (547, 398),
+    (626, 398),
+    (705, 398),
+    (784, 398),
+    (863, 398),
+    (942, 398),
 ]
+reversed_follower_positions = follower_positions[::-1]
 
 DEFAULT_CONFIG = {
     "emulator_port": 16384,
@@ -652,7 +653,7 @@ def detect_super_evolution_button(gray_screenshot):
 
 
 def perform_follower_attacks(u2_device, screenshot, base_colors):
-    """检测并执行随从攻击（优先攻击护盾目标）"""
+    """检测并执行随从攻击（优先攻击护盾目标）（从右往左尝试攻击）"""
     # 对面主人位置（默认攻击目标）
     default_target = (646, 64)
     need_scan_shield = True
@@ -662,7 +663,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
     # if base_colors:
         # 使用颜色检测
 
-        for i, pos in enumerate(follower_positions):
+        for i, pos in enumerate(reversed_follower_positions):
             x, y = pos
             attackDelay = 0.02
             # 获取当前位置的色彩
@@ -714,7 +715,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
         # 后备方案：执行简易坐标
         # 固定攻击
         # logger.warning("未找到基准背景色，执行默认攻击")
-        for i, pos in enumerate(follower_positions):
+        for i, pos in enumerate(reversed_follower_positions):
             x, y = pos
             attackDelay = 0.02
 
@@ -765,8 +766,15 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
         logger.warning("没有基准背景色，使用旧逻辑进行进化操作")
         return perform_evolution_actions_fallback(u2_device)
 
+    # 有护盾时从右侧开始进化，没有护盾时从左侧开始进化
+    exist_shield = scan_shield_targets()
+    if exist_shield:
+        evolve_positions = reversed_follower_positions
+    else:
+        evolve_positions = follower_positions
+
     # 遍历每个随从位置
-    for i, pos in enumerate(follower_positions):
+    for i, pos in enumerate(evolve_positions):
         x, y = pos
 
         # 检查基准背景色是否存在
@@ -843,8 +851,15 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
     evolution_detected = False
     logger_word = False
 
+    # 有护盾时从右侧开始进化，没有护盾时从左侧开始进化
+    exist_shield = scan_shield_targets()
+    if exist_shield:
+        evolve_positions = reversed_follower_positions
+    else:
+        evolve_positions = follower_positions
+
     # 遍历所有位置
-    for i, pos in enumerate(follower_positions):
+    for i, pos in enumerate(evolve_positions):
         follower_x, follower_y = pos
         u2_device.click(follower_x, follower_y)
         time.sleep(0.5)
