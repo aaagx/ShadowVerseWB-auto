@@ -1349,8 +1349,8 @@ def main():
                         if current_round_count in (4, 5, 6, 7, 8):  # 第4 ，5，6 ,7,8回合
                             logger.info(f"第{current_round_count}回合，执行进化/超进化")
                             perform_fullPlus_actions(u2_device, current_round_count, base_colors)
-                        elif current_round_count >= 11:   #11回合以上弃权防止烧绳
-                            logger.info(f"11回合以上，直接弃权")
+                        elif current_round_count > 12:   #12回合以上弃权防止烧绳
+                            logger.info(f"12回合以上，直接弃权")
                             time.sleep(0.5)
                             u2_device.click(57, 63)
                             time.sleep(0.5)
