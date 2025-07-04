@@ -213,3 +213,4 @@ config.json
 /release
 /extra_templates
 /templates
+/test_resource
