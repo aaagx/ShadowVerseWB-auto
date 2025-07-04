@@ -658,7 +658,9 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
     # 对面主人位置（默认攻击目标）
     default_target = (646, 64)
 
-    if base_colors:
+    # 颜色检测不够准确，先固定使用旧逻辑
+    if False:
+    # if base_colors:
         # 使用颜色检测
 
         for i, pos in enumerate(follower_positions):
@@ -710,7 +712,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
     else:
         # 后备方案：执行简易坐标
         # 固定攻击
-        logger.warning("未找到基准背景色，执行默认攻击")
+        # logger.warning("未找到基准背景色，执行默认攻击")
         for i, pos in enumerate(follower_positions):
             x, y = pos
             attackDelay = 0.01
@@ -743,6 +745,9 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
     global device
 
     evolution_detected = False
+
+    # 基准背景色检测并不准确，先固定使用旧逻辑
+    return perform_evolution_actions_fallback(u2_device)
 
     # 如果无法获取截图，回退到旧逻辑
     if screenshot is None:
@@ -799,7 +804,7 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
 
             # 同时检查两个检测函数
             max_loc, max_val = detect_super_evolution_button(gray_screenshot)
-            if max_val >= 0.80:
+            if max_val >= 0.90:
                 template_info = load_super_evolution_template()
                 if template_info:
                     center_x = max_loc[0] + template_info['w'] // 2
@@ -811,7 +816,7 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
 
 
             max_loc1, max_val1 = detect_evolution_button(gray_screenshot)
-            if max_val1 >= 0.80:
+            if max_val1 >= 0.90:
                 template_info = load_evolution_template()
                 if template_info:
                     center_x = max_loc1[0] + template_info['w'] // 2
@@ -853,18 +858,17 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
         gray_screenshot = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
 
         max_loc, max_val = detect_super_evolution_button(gray_screenshot)
-        if max_val >= 0.80:
+        if max_val >= 0.90:
             template_info = load_super_evolution_template()
             center_x = max_loc[0] + template_info['w'] // 2
             center_y = max_loc[1] + template_info['h'] // 2
             u2_device.click(center_x, center_y)
             logger.info(f"检测到超进化按钮并点击")
             evolution_detected = True
-            time.sleep(0.1)
             break
 
         max_loc1, max_val1 = detect_evolution_button(gray_screenshot)
-        if max_val1 >= 0.80:  # 检测阈值
+        if max_val1 >= 0.90:  # 检测阈值
             template_info = load_evolution_template()
             center_x = max_loc1[0] + template_info['w'] // 2
             center_y = max_loc1[1] + template_info['h'] // 2
@@ -873,7 +877,7 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
                 logger.info(f"检测到进化按钮并点击")
                 logger_word = True
             evolution_detected = True
-            time.sleep(0.1)
+            break
 
         time.sleep(0.1)
 
