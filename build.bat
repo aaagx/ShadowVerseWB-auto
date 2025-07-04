@@ -6,7 +6,6 @@ SET VENV_DIR=venv
 SET REQUIREMENTS_FILE=requirements.txt
 
 :: Step 2: 激活虚拟环境
-echo 激活虚拟环境...
 call %VENV_DIR%\Scripts\activate.bat
 
 :: Step 3: 执行编译
@@ -20,6 +19,7 @@ md release
 copy dist\sv-auto.exe release\sv-auto.exe
 
 :: Step 6: 复制资源文件夹
+timeout /t 3 /nobreak >nul
 xcopy /E /I "国服覆盖资源" release\国服覆盖资源
 xcopy /E /I "国际服覆盖资源" release\国际服覆盖资源
 xcopy /E /I shield release\shield

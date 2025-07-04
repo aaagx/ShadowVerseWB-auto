@@ -33,7 +33,6 @@ follower_positions = [
 ]
 
 DEFAULT_CONFIG = {
-    "adb_port": 5037,
     "emulator_port": 16384,
     "scan_interval": 2,
     "evolution_threshold": 0.85,
@@ -152,12 +151,11 @@ def connect_with_adbutils(config):
     global device
     try:
         # 从配置获取端口
-        ADB_PORT = config["adb_port"]
         EMULATOR_PORT = config["emulator_port"]
         target_serial = f"127.0.0.1:{EMULATOR_PORT}"
 
         # 创建 adb 客户端
-        client = AdbClient(host="127.0.0.1", port=ADB_PORT)
+        client = AdbClient(host="127.0.0.1")
 
         # 检查是否已连接目标模拟器
         devices_list = client.device_list()
@@ -205,7 +203,7 @@ def connect_with_adbutils(config):
         logger.error(f"设备连接失败: {str(e)}")
         error_msg = (
             "设备连接失败！\n\n"
-            f"当前配置: ADB端口={ADB_PORT}, 模拟器端口={EMULATOR_PORT}\n"
+            f"当前配置: 模拟器ADB端口={EMULATOR_PORT}\n"
             "请按以下步骤操作：\n"
             "1. 确保模拟器已启动\n"
             "2. 检查config.json中的端口配置是否正确\n"
@@ -701,7 +699,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
                 if shield_targets:
                     logger.info(f"检测到护盾目标，优先攻击")
                     target_x, target_y = shield_targets[0]
-                    attackDelay = 0.5
+                    attackDelay = 1
                 else:
                     need_scan_shield = False
                     logger.info(f"未检测到护盾，直接攻击主战者")
@@ -729,7 +727,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             if shield_targets:
                 logger.info(f"检测到护盾目标，优先攻击")
                 target_x, target_y = shield_targets[0]
-                attackDelay = 0.5
+                attackDelay = 2.1
             else:
                 need_scan_shield = False
                 logger.info(f"未检测到护盾，直接攻击主战者")
@@ -964,7 +962,7 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
         )
         if evolved:
             # 等待最终进化/超进化动画完成
-            time.sleep(3)
+            time.sleep(6.5)
 
 
      # 点击空白处关闭面板
@@ -1073,7 +1071,6 @@ def main():
     # 加载配置
     config = load_config()
     extra_dir = config.get("extra_templates_dir", "")
-    ADB_PORT = config["adb_port"]
     EMULATOR_PORT = config["emulator_port"]
     SCAN_INTERVAL = config["scan_interval"]
 
@@ -1082,7 +1079,7 @@ def main():
 
 
     # 在日志中显示当前配置
-    logger.info(f"当前配置: ADB端口={ADB_PORT}, 模拟器端口={EMULATOR_PORT}, 扫描间隔={SCAN_INTERVAL}秒"f"")
+    logger.info(f"当前配置: 模拟器ADB端口={EMULATOR_PORT}, 扫描间隔={SCAN_INTERVAL}秒"f"")
 
     # 初始化设备对象
     device = None
