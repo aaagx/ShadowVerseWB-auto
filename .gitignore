@@ -1,0 +1,7 @@
+config.json
+/build
+/dist
+/release
+/extra_templates
+/templates
+/venv
