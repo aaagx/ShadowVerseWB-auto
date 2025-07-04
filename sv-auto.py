@@ -21,15 +21,15 @@ from ctypes import wintypes
 
 # 随从的位置坐标（720P分辨率）
 follower_positions = [
-    (310, 398),
-    (389, 398),
-    (468, 398),
-    (547, 398),
-    (626, 398),
-    (705, 398),
-    (784, 398),
-    (863, 398),
     (942, 398),
+    (863, 398),
+    (784, 398),
+    (705, 398),
+    (626, 398),
+    (547, 398),
+    (468, 398),
+    (389, 398),
+    (310, 398),
 ]
 
 DEFAULT_CONFIG = {
@@ -904,7 +904,7 @@ def perform_full_actions(u2_device, round_count, base_colors):
     # 出牌拖拽（大于6回合时从中心向两侧）
     start_y = 672+random.randint(-2,2)
     end_y = 400+random.randint(-2,2)
-    duration = 0.03
+    duration = 0.05
     if round_count > 6:
         drag_points_x = [684, 600, 700, 551, 830, 501, 900, 405, 959]
     else:
@@ -940,7 +940,7 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
     # 出牌拖拽（大于6回合时从中心向两侧）
     start_y = 672+random.randint(-2,2)
     end_y = 400+random.randint(-2,2)
-    duration = 0.03
+    duration = 0.05
     if round_count > 6:
         drag_points_x = [684, 600, 700, 551, 830, 501, 900, 405, 959]
     else:
@@ -1219,6 +1219,7 @@ def main():
                 "\n8、国际服使用mumu模拟器如果发现游戏亮度过低，请在模拟器配置中将亮度拉到最高"
                 "\n9、如果模拟器第一次打开游戏卡在设备优化界面，在模拟器设置中配置使用DirectX而非Vulkan"
                 "\n10、使用前需要在游戏设置中关闭回合结束提示"
+                "\n11、自己不要带盾，检测到己方带盾会自动暂停脚本"
                 "\n====================================================\n\n")
     # 防倒卖声明
     red_start = "\033[91m"  # ANSI红色开始
