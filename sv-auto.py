@@ -20,7 +20,17 @@ import ctypes
 from ctypes import wintypes
 
 # 随从的位置坐标（720P分辨率）
-follower_positions = [(350, 398),(430, 398),(495, 398),(576, 398),(633, 398),(706, 398),(783, 398),(863, 398),(939, 398)]
+follower_positions = [
+    (310, 398),
+    (389, 398),
+    (468, 398),
+    (547, 398),
+    (626, 398),
+    (705, 398),
+    (784, 398),
+    (863, 398),
+    (942, 398),
+]
 
 DEFAULT_CONFIG = {
     "adb_port": 5037,
@@ -562,61 +572,29 @@ def show_round_statistics():
         logger.info(f"{match['date']} - {match['rounds']}回合 ({match['duration']}) {run_marker}")
 
 
-def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, curve_factor=0.3):
+def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=8):
     """
-    执行弧线拖拽操作
+    模拟曲线拖拽操作
     :param u2_device: 设备对象
     :param start_x: 起始点x坐标
     :param start_y: 起始点y坐标
     :param end_x: 结束点x坐标
     :param end_y: 结束点y坐标
     :param duration: 拖拽持续时间（秒）
-    :param curve_factor: 曲线因子，控制曲线的弯曲程度（0-1）
+    :param steps: 拖拽路径中的步骤数
     """
-    # 确保所有坐标都是Python原生整数类型
-    start_x = int(start_x)
-    start_y = int(start_y)
-    end_x = int(end_x)
-    end_y = int(end_y)
+    u2_device.touch.down(start_x, start_y)
 
-    # 计算中点
-    mid_x = (start_x + end_x) / 2
-    mid_y = (start_y + end_y) / 2
+    for i in range(1, steps + 1):
+        t = i / steps
+        # 模拟抛物线
+        xi = start_x + (end_x - start_x) * t
+        yi = start_y + (end_y - start_y) * (t ** 0.85)
 
-    # 固定方向
-    direction = 1
+        u2_device.touch.move(int(xi), int(yi))
+        time.sleep(duration / steps)
 
-    # 计算两点之间的距离
-    distance = ((end_x - start_x) ** 2 + (end_y - start_y) ** 2) ** 0.5
-
-    # 计算曲线高度（基于距离和曲线因子）
-    curve_height = distance * curve_factor * direction
-
-    # 计算垂直方向向量
-    dx = end_x - start_x
-    dy = end_y - start_y
-
-    # 计算垂直方向（旋转90度）
-    if dx == 0 and dy == 0:
-        # 如果起点和终点相同，使用默认方向
-        perpendicular_x, perpendicular_y = 0, 1
-    else:
-        # 计算垂直向量
-        magnitude = (dx * dx + dy * dy) ** 0.5
-        normalized_dx = dx / magnitude
-        normalized_dy = dy / magnitude
-        perpendicular_x = -normalized_dy
-        perpendicular_y = normalized_dx
-
-    # 计算控制点坐标
-    control_x = mid_x + perpendicular_x * curve_height
-    control_y = mid_y + perpendicular_y * curve_height
-
-    # 计算曲线上的点（贝塞尔曲线）
-    steps = 20  # 曲线上的点数
-
-    # 执行拖拽操作 - 添加类型转换确保坐标是整数
-    u2_device.drag(start_x, start_y, end_x, end_y, duration)
+    u2_device.touch.up(end_x, end_y)
 
 
 def load_evolution_template():
@@ -685,7 +663,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
 
         for i, pos in enumerate(follower_positions):
             x, y = pos
-            attackDelay = 0.1
+            attackDelay = 0.01
             # 获取当前位置的色彩
             current_color1 = screenshot.getpixel((x, y))
             # 获取Y轴向下20个像素点的色彩
@@ -727,16 +705,15 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
                 # 确保坐标是整数
                 target_x = int(target_x)
                 target_y = int(target_y)
-                curved_drag(u2_device, x, y, target_x, target_y, 0.04)
+                curved_drag(u2_device, x, y, target_x, target_y, 0.03, 4)
                 time.sleep(attackDelay)
     else:
         # 后备方案：执行简易坐标
         # 固定攻击
         logger.warning("未找到基准背景色，执行默认攻击")
-        easy_positions =[(352,398),(482,398),(511,398),(644,398),(731,398),(811,398),(974,398)]#简易坐标
-        for i, pos in enumerate(easy_positions):
+        for i, pos in enumerate(follower_positions):
             x, y = pos
-            attackDelay = 0.1
+            attackDelay = 0.01
 
             shield_targets = scan_shield_targets()
 
@@ -750,7 +727,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             # 确保坐标是整数
             target_x = int(target_x)
             target_y = int(target_y)
-            curved_drag(u2_device, x, y, target_x, target_y, 0.03)
+            curved_drag(u2_device, x, y, target_x, target_y, 0.03, 4)
             time.sleep(attackDelay)
 
 
@@ -807,13 +784,12 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
         if color_diff1 > 25 or color_diff2 > 25:
             # 点击该位置
             u2_device.click(x, y)
-            time.sleep(0.5)  # 等待进化按钮出现
+            time.sleep(0.1)  # 等待进化按钮出现
 
             # 获取新截图检测进化按钮
             new_screenshot = take_screenshot()
             if new_screenshot is None:
                 logger.warning(f"位置 {i} 无法获取截图，跳过检测")
-                time.sleep(0.1)
                 continue
 
             # 转换为OpenCV格式
@@ -831,7 +807,6 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
                     u2_device.click(center_x, center_y)
                     logger.info(f"检测到超进化按钮并点击 ")
                     evolution_detected = True
-                    time.sleep(0.1)
                     break
 
 
@@ -844,9 +819,7 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
                     u2_device.click(center_x, center_y)
                     logger.info(f"检测到进化按钮并点击 ")
                     evolution_detected = True
-                    time.sleep(0.1)
-
-            time.sleep(0.1)  # 短暂等待
+                    break
 
     return evolution_detected
 
@@ -911,21 +884,24 @@ def perform_full_actions(u2_device, round_count, base_colors):
     """720P分辨率下的出牌攻击操作"""
     # 不管是不是后手先点能量点的位置再说
     u2_device.click(1173, 500)
-    time.sleep(0.2)
+    time.sleep(0.1)
 
     # 展牌
     u2_device.click(1049, 646)
-    time.sleep(0.2)
+    time.sleep(0.25)
 
 
-    # 5次出牌拖拽（使用弧线）
+    # 出牌拖拽（大于6回合时从中心向两侧）
     start_y = 672+random.randint(-2,2)
     end_y = 400+random.randint(-2,2)
-    duration = 0.02
-    drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
+    duration = 0.03
+    if round_count > 6:
+        drag_points_x = [684, 600, 700, 551, 830, 501, 900, 405, 959]
+    else:
+        drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
     for x in drag_points_x:
-        curved_drag(u2_device, x+random.randint(-2,2), start_y, x+random.randint(-2,2), end_y, duration)
-        time.sleep(0.1)
+        curved_drag(u2_device, x+random.randint(-2,2), start_y, x+random.randint(-2,2), end_y, duration, 6)
+        time.sleep(0.05)
     time.sleep(0.1)
 
     # 执行随从攻击（使用统一函数
@@ -949,34 +925,39 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
 
     # 展牌
     u2_device.click(1049, 646)
-    time.sleep(0.1)
+    time.sleep(0.25)
 
-    # 5次出牌拖拽（使用弧线）
+    # 出牌拖拽（大于6回合时从中心向两侧）
     start_y = 672+random.randint(-2,2)
     end_y = 400+random.randint(-2,2)
-    duration = 0.01
-    drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
+    duration = 0.03
+    if round_count > 6:
+        drag_points_x = [684, 600, 700, 551, 830, 501, 900, 405, 959]
+    else:
+        drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
 
     for x in drag_points_x:
-        curved_drag(u2_device, x+random.randint(-2,2), start_y, x+random.randint(-2,2), end_y, duration)
+        curved_drag(u2_device, x+random.randint(-2,2), start_y, x+random.randint(-2,2), end_y, duration, 6)
+        time.sleep(0.05)
     time.sleep(0.1)
 
     # 获取当前截图
     screenshot = take_screenshot()
     # 执行进化操作
     if screenshot is not None:
-        perform_evolution_actions(
+        evolved = perform_evolution_actions(
             u2_device,
             screenshot,
             base_colors,
         )
+        if evolved:
+            # 等待最终进化/超进化动画完成
+            time.sleep(3)
 
 
-    # 等待最终进化/超进化动画完成
-    time.sleep(1)
      # 点击空白处关闭面板
     u2_device.click(1026+random.randint(-2,2),178+random.randint(-2,2))
-    time.sleep(1)
+    time.sleep(0.1)
 
     # 执行随从攻击
     screenshot = take_screenshot()
@@ -988,7 +969,7 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
         )
     else:
         logger.error("无法获取截图，遍历攻击操作")
-    time.sleep(0.3)
+    time.sleep(0.1)
 
 def scan_self_shield_targets():
     """扫描己方随从区域的护盾目标（彩色匹配），返回置信度最高的目标"""
@@ -1226,6 +1207,8 @@ def main():
                 "\n5、默认国服，根据服务器自行选择附带的资源替换 templates 和 extra_templates 文件夹，如有按钮无法识别请自行替换素材"
                 "\n6、阶位对战图片在不同分段均不相同，第一次使用时请自行截图替换 templates 中的 mainPage.png"
                 "\n7、自动跳过每日免费卡包，请记得自行领取"
+                "\n8、国际服使用mumu模拟器如果发现游戏亮度过低，请在模拟器配置中将亮度拉到最高"
+                "\n9、如果模拟器第一次打开游戏卡在设备优化界面，在模拟器设置中配置使用DirectX而非Vulkan"
                 "\n====================================================\n\n")
     # 防倒卖声明
     red_start = "\033[91m"  # ANSI红色开始

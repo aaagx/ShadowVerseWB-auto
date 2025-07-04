@@ -215,3 +215,4 @@ config.json
 /templates
 /test_resource
 round_statistics.json
+sv-auto.exe
