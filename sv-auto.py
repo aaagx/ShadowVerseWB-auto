@@ -664,7 +664,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
 
         for i, pos in enumerate(follower_positions):
             x, y = pos
-            attackDelay = 0.01
+            attackDelay = 0.02
             # 获取当前位置的色彩
             current_color1 = screenshot.getpixel((x, y))
             # 获取Y轴向下20个像素点的色彩
@@ -708,7 +708,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
                 # 确保坐标是整数
                 target_x = int(target_x)
                 target_y = int(target_y)
-                curved_drag(u2_device, x, y, target_x, target_y, 0.03, 4)
+                curved_drag(u2_device, x, y, target_x, target_y, 0.04, 4)
                 time.sleep(attackDelay)
     else:
         # 后备方案：执行简易坐标
@@ -716,7 +716,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
         # logger.warning("未找到基准背景色，执行默认攻击")
         for i, pos in enumerate(follower_positions):
             x, y = pos
-            attackDelay = 0.01
+            attackDelay = 0.02
 
             if need_scan_shield:
                 logger.info(f"开始检测护盾")
@@ -735,7 +735,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             # 确保坐标是整数
             target_x = int(target_x)
             target_y = int(target_y)
-            curved_drag(u2_device, x, y, target_x, target_y, 0.03, 4)
+            curved_drag(u2_device, x, y, target_x, target_y, 0.04, 4)
             time.sleep(attackDelay)
 
 
@@ -905,7 +905,7 @@ def perform_full_actions(u2_device, round_count, base_colors):
     start_y = 672+random.randint(-2,2)
     end_y = 400+random.randint(-2,2)
     duration = 0.05
-    if round_count > 6:
+    if round_count >= 6:
         drag_points_x = [684, 600, 700, 551, 830, 501, 900, 405, 959]
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
@@ -941,7 +941,7 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
     start_y = 672+random.randint(-2,2)
     end_y = 400+random.randint(-2,2)
     duration = 0.05
-    if round_count > 6:
+    if round_count >= 6:
         drag_points_x = [684, 600, 700, 551, 830, 501, 900, 405, 959]
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
