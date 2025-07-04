@@ -1,0 +1,4 @@
+adbutils
+uiautomator2
+opencv-python
+numpy
