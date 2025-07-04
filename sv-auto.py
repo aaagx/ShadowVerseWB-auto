@@ -810,7 +810,7 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
 
             # 同时检查两个检测函数
             max_loc, max_val = detect_super_evolution_button(gray_screenshot)
-            if max_val >= 0.85:
+            if max_val >= 0.825:
                 template_info = load_super_evolution_template()
                 if template_info:
                     center_x = max_loc[0] + template_info['w'] // 2
@@ -864,7 +864,7 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
         gray_screenshot = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
 
         max_loc, max_val = detect_super_evolution_button(gray_screenshot)
-        if max_val >= 0.85:
+        if max_val >= 0.825:
             template_info = load_super_evolution_template()
             center_x = max_loc[0] + template_info['w'] // 2
             center_y = max_loc[1] + template_info['h'] // 2
