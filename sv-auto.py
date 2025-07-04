@@ -657,6 +657,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
     """检测并执行随从攻击（优先攻击护盾目标）"""
     # 对面主人位置（默认攻击目标）
     default_target = (646, 64)
+    need_scan_shield = True
 
     # 颜色检测不够准确，先固定使用旧逻辑
     if False:
@@ -694,13 +695,15 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             # 如果两个位置中有一个色彩差异超过阈值，则认为有随从
             if color_diff1 > 25 or color_diff2 > 25:
                 # 扫描护盾目标
-                shield_targets = scan_shield_targets()
+                if need_scan_shield:
+                    shield_targets = scan_shield_targets()
 
                 if shield_targets:
                     logger.info(f"检测到护盾目标，优先攻击")
                     target_x, target_y = shield_targets[0]
                     attackDelay = 0.5
                 else:
+                    need_scan_shield = False
                     logger.info(f"未检测到护盾，直接攻击主战者")
                     target_x, target_y = default_target
 
@@ -717,13 +720,18 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             x, y = pos
             attackDelay = 0.01
 
-            shield_targets = scan_shield_targets()
+            if need_scan_shield:
+                logger.info(f"开始检测护盾")
+                shield_targets = scan_shield_targets()
+            else:
+                logger.info(f"跳过护盾检测")
 
             if shield_targets:
                 logger.info(f"检测到护盾目标，优先攻击")
                 target_x, target_y = shield_targets[0]
                 attackDelay = 0.5
             else:
+                need_scan_shield = False
                 logger.info(f"未检测到护盾，直接攻击主战者")
                 target_x, target_y = default_target
             # 确保坐标是整数
@@ -804,7 +812,7 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
 
             # 同时检查两个检测函数
             max_loc, max_val = detect_super_evolution_button(gray_screenshot)
-            if max_val >= 0.90:
+            if max_val >= 0.85:
                 template_info = load_super_evolution_template()
                 if template_info:
                     center_x = max_loc[0] + template_info['w'] // 2
@@ -858,7 +866,7 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
         gray_screenshot = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
 
         max_loc, max_val = detect_super_evolution_button(gray_screenshot)
-        if max_val >= 0.90:
+        if max_val >= 0.85:
             template_info = load_super_evolution_template()
             center_x = max_loc[0] + template_info['w'] // 2
             center_y = max_loc[1] + template_info['h'] // 2
@@ -1213,6 +1221,7 @@ def main():
                 "\n7、自动跳过每日免费卡包，请记得自行领取"
                 "\n8、国际服使用mumu模拟器如果发现游戏亮度过低，请在模拟器配置中将亮度拉到最高"
                 "\n9、如果模拟器第一次打开游戏卡在设备优化界面，在模拟器设置中配置使用DirectX而非Vulkan"
+                "\n10、使用前需要在游戏设置中关闭回合结束提示"
                 "\n====================================================\n\n")
     # 防倒卖声明
     red_start = "\033[91m"  # ANSI红色开始
