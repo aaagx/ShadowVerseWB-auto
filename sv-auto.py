@@ -739,6 +739,9 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             curved_drag(u2_device, x, y, target_x, target_y, 0.04, 4)
             time.sleep(attackDelay)
 
+    # 避免攻击被卡掉
+    time.sleep(0.4)
+
 
 def perform_evolution_actions(u2_device, screenshot, base_colors):
     """
