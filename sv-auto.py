@@ -5,7 +5,6 @@ import time
 import json
 import cv2
 import numpy as np
-import threading
 import queue
 import datetime
 import random
