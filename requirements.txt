@@ -3,3 +3,4 @@ uiautomator2
 opencv-python
 numpy
 pyinstaller
+PyQt5

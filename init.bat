@@ -27,7 +27,7 @@ IF NOT EXIST "%REQUIREMENTS_FILE%" (
 
 echo 检查并安装依赖...
 pip install --upgrade pip
-pip install -r %REQUIREMENTS_FILE%
+pip install -r %REQUIREMENTS_FILE% -i https://mirrors.aliyun.com/pypi/simple/
 
 :: Step 4: 检查并生成配置文件
 IF NOT EXIST "config.json" (

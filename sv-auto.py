@@ -11,6 +11,7 @@ import random
 import io
 import ctypes
 from ctypes import wintypes
+from ctypes import windll
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -790,6 +791,7 @@ class ScriptThread(QThread):
         # 设置日志处理器
         ui_handler = UILogHandler(self.log_signal)
         ui_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.removeHandler(console_handler)
         logger.addHandler(ui_handler)
 
     def run(self):
@@ -994,8 +996,8 @@ class ScriptThread(QThread):
         self.log_signal.emit("模拟器请调成1280x720分辨率")
 
         # 防倒卖声明
-        red_start = "\033[91m"  # ANSI红色开始
-        red_end = "\033[0m"     # ANSI颜色重置
+        red_start = "<font color='red'>"
+        red_end = "</font>"
         message = f"""
 {red_start}
 【提示】本脚本为免费开源项目，您无需付费即可获取。
@@ -1045,9 +1047,6 @@ class ScriptThread(QThread):
 
                 max_loc, max_val = match_template(gray_screenshot, template_info)
                 if max_val >= template_info['threshold']:
-                    if key in ['enemy_round']:
-                        continue
-
                     if key != last_detected_button:
                         if key == 'end_round' and in_match:
                             self.log_signal.emit(f"已发现'结束回合'按钮 (当前回合: {current_round_count})")
