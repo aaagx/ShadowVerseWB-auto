@@ -20,9 +20,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QPixmap, QPalette, QBrush, QColor, QFontDatabase, QIcon
 
-# 背景图片路径 - 请修改为您的实际路径
-BACKGROUND_IMAGE = os.path.join("Image", "ui背景.jpg")  # 背景图片路径
-
 # 随从的位置坐标（720P分辨率）
 follower_positions = [
     (310, 398),
@@ -1236,6 +1233,9 @@ class ShadowverseAutomationUI(QMainWindow):
         self.setWindowTitle("Shadowverse 自动化脚本")
         self.setGeometry(100, 100, 900, 700)
 
+        # 加载配置
+        self.config = load_config()
+
         # 设置窗口背景
         self.set_background()
 
@@ -1255,18 +1255,7 @@ class ShadowverseAutomationUI(QMainWindow):
         # 创建调色板
         palette = self.palette()
 
-        # 检查背景图片是否存在
-        if os.path.exists(BACKGROUND_IMAGE):
-            # 加载背景图片并缩放以适应窗口
-            background = QPixmap(BACKGROUND_IMAGE).scaled(
-                self.size(),
-                Qt.IgnoreAspectRatio,
-                Qt.SmoothTransformation
-            )
-            palette.setBrush(QPalette.Window, QBrush(background))
-        else:
-            # 如果图片不存在，使用半透明黑色背景
-            palette.setColor(QPalette.Window, QColor(30, 30, 40, 180))
+        palette.setColor(QPalette.Window, QColor(240, 240, 240, 255))
 
         self.setPalette(palette)
 
@@ -1281,24 +1270,24 @@ class ShadowverseAutomationUI(QMainWindow):
         central_widget.setObjectName("CentralWidget")
         central_widget.setStyleSheet("""
             #CentralWidget {
-                background-color: rgba(30, 30, 40, 180);
+                background-color: rgba(240, 240, 240, 255);
                 border-radius: 15px;
                 padding: 15px;
             }
             QLabel {
-                color: #E0E0FF;
+                color: #333333;
                 font-weight: bold;
             }
             QLineEdit {
-                background-color: rgba(50, 50, 70, 200);
-                color: #FFFFFF;
-                border: 1px solid #5A5A8F;
+                background-color: rgba(255, 255, 255, 255);
+                color: #333333;
+                border: 1px solid #CCCCCC;
                 border-radius: 5px;
                 padding: 5px;
             }
             QPushButton {
-                background-color: #4A4A7F;
-                color: #FFFFFF;
+                background-color: #E0E0E0;
+                color: #333333;
                 border: none;
                 border-radius: 5px;
                 padding: 8px 15px;
@@ -1306,29 +1295,29 @@ class ShadowverseAutomationUI(QMainWindow):
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #5A5A9F;
+                background-color: #CCCCCC;
             }
             QPushButton:pressed {
-                background-color: #3A3A6F;
+                background-color: #AAAAAA;
             }
             QTextEdit {
-                background-color: rgba(25, 25, 35, 220);
-                color: #66AAFF;
-                border: 1px solid #444477;
+                background-color: rgba(255, 255, 255, 255);
+                color: #333333;
+                border: 1px solid #CCCCCC;
                 border-radius: 5px;
             }
             #StatsFrame {
-                background-color: rgba(40, 40, 60, 200);
-                border: 1px solid #555588;
+                background-color: rgba(255, 255, 255, 240);
+                border: 1px solid #CCCCCC;
                 border-radius: 8px;
                 padding: 10px;
             }
             .StatLabel {
-                color: #AACCFF;
+                color: #333333;
                 font-size: 14px;
             }
             .StatValue {
-                color: #FFFF88;
+                color: #555555;
                 font-size: 16px;
                 font-weight: bold;
             }
@@ -1396,8 +1385,8 @@ class ShadowverseAutomationUI(QMainWindow):
         # ADB 连接部分
         adb_layout = QHBoxLayout()
         adb_label = QLabel("ADB 端口:")
-        self.adb_input = QLineEdit("127.0.0.1:16384")
-        self.connect_btn = QPushButton("连接设备")
+        self.adb_input = QLineEdit(f"127.0.0.1:{self.config["emulator_port"]}")
+        self.connect_btn = QPushButton("开始")
         self.connect_btn.clicked.connect(self.connect_device)
 
         adb_layout.addWidget(adb_label)
@@ -1415,17 +1404,17 @@ class ShadowverseAutomationUI(QMainWindow):
 
         # 控制按钮
         btn_layout = QHBoxLayout()
-        self.start_btn = QPushButton("开始")
+        self.resume_btn = QPushButton("恢复")
         self.stop_btn = QPushButton("停止")
         self.pause_btn = QPushButton("暂停")
         self.stats_btn = QPushButton("显示统计")
 
-        self.start_btn.clicked.connect(self.start_script)
+        self.resume_btn.clicked.connect(self.resume_script)
         self.stop_btn.clicked.connect(self.stop_script)
         self.pause_btn.clicked.connect(self.pause_script)
         self.stats_btn.clicked.connect(self.show_stats)
 
-        btn_layout.addWidget(self.start_btn)
+        btn_layout.addWidget(self.resume_btn)
         btn_layout.addWidget(self.stop_btn)
         btn_layout.addWidget(self.pause_btn)
         btn_layout.addWidget(self.stats_btn)
@@ -1477,7 +1466,7 @@ class ShadowverseAutomationUI(QMainWindow):
         self.setCentralWidget(central_widget)
 
         # 初始化按钮状态
-        self.start_btn.setEnabled(False)
+        self.resume_btn.setEnabled(False)
         self.stop_btn.setEnabled(False)
         self.pause_btn.setEnabled(False)
         self.stats_btn.setEnabled(False)
@@ -1497,7 +1486,7 @@ class ShadowverseAutomationUI(QMainWindow):
         self.connect_btn.setEnabled(False)
 
         # 加载配置
-        config = DEFAULT_CONFIG.copy()
+        config = self.config
         try:
             config["emulator_port"] = int(self.adb_input.text().split(":")[-1])
         except:
@@ -1511,12 +1500,15 @@ class ShadowverseAutomationUI(QMainWindow):
         self.script_thread.start()
 
         # 更新按钮状态
-        self.start_btn.setEnabled(True)
+        self.resume_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.pause_btn.setEnabled(True)
+        self.stats_btn.setEnabled(True)
 
-    def start_script(self):
+    def resume_script(self):
         if self.script_thread:
             self.script_thread.resume()
-            self.start_btn.setEnabled(False)
+            self.resume_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
             self.pause_btn.setEnabled(True)
             self.stats_btn.setEnabled(True)
@@ -1525,7 +1517,8 @@ class ShadowverseAutomationUI(QMainWindow):
     def stop_script(self):
         if self.script_thread:
             self.script_thread.stop()
-            self.start_btn.setEnabled(False)
+            self.connect_btn.setEnabled(True)
+            self.resume_btn.setEnabled(False)
             self.stop_btn.setEnabled(False)
             self.pause_btn.setEnabled(False)
             self.timer.stop()
@@ -1548,9 +1541,9 @@ class ShadowverseAutomationUI(QMainWindow):
     def update_status(self, status):
         self.status_label.setText(status)
         if status == "运行中":
-            self.status_label.setStyleSheet("color: #55FF55;")
+            self.status_label.setStyleSheet("color: #107c10;")
         elif status == "已暂停":
-            self.status_label.setStyleSheet("color: #FFFF55;")
+            self.status_label.setStyleSheet("color: #d83b01;")
             self.timer.stop()
         else:
             self.status_label.setStyleSheet("color: #FF5555;")
