@@ -1254,6 +1254,7 @@ def main():
 
     try:
         needLogPause = True
+        needAddRoundCount = True
         while script_running:
             start_time = time.time()
 
@@ -1319,6 +1320,9 @@ def main():
                         in_match = True
                         logger.info("检测到新对战开始")
 
+                    if key == 'enemy_round':
+                        # 敌方回合开始时重置needAddRoundCount
+                        needAddRoundCount = True
 
                     if key == 'end_round' and in_match:
                         # 新增：在第一回合且未出牌时记录基准背景色
@@ -1374,8 +1378,9 @@ def main():
                             logger.info(f"第{current_round_count}回合，执行正常操作")
                             perform_full_actions(u2_device, current_round_count, base_colors)
 
-                        current_round_count += 1
-                        has_clicked_plus_this_round = False
+                        if needAddRoundCount:
+                            current_round_count += 1
+                            needAddRoundCount = False
 
 
                     # 计算中心点并点击
