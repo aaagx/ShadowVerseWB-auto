@@ -665,7 +665,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
 
         for i, pos in enumerate(reversed_follower_positions):
             x, y = pos
-            attackDelay = 0.02
+            attackDelay = 0.03
             # 获取当前位置的色彩
             current_color1 = screenshot.getpixel((x, y))
             # 获取Y轴向下20个像素点的色彩
@@ -709,7 +709,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
                 # 确保坐标是整数
                 target_x = int(target_x)
                 target_y = int(target_y)
-                curved_drag(u2_device, x, y, target_x, target_y, 0.04, 4)
+                curved_drag(u2_device, x, y, target_x, target_y, 0.05, 3)
                 time.sleep(attackDelay)
     else:
         # 后备方案：执行简易坐标
@@ -717,7 +717,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
         # logger.warning("未找到基准背景色，执行默认攻击")
         for i, pos in enumerate(reversed_follower_positions):
             x, y = pos
-            attackDelay = 0.02
+            attackDelay = 0.03
 
             if need_scan_shield:
                 logger.info(f"开始检测护盾")
@@ -736,11 +736,11 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             # 确保坐标是整数
             target_x = int(target_x)
             target_y = int(target_y)
-            curved_drag(u2_device, x, y, target_x, target_y, 0.04, 4)
+            curved_drag(u2_device, x, y, target_x, target_y, 0.05, 3)
             time.sleep(attackDelay)
 
     # 避免攻击被卡掉
-    time.sleep(0.4)
+    time.sleep(0.25)
 
 
 def perform_evolution_actions(u2_device, screenshot, base_colors):
@@ -903,8 +903,6 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
             evolution_detected = True
             break
 
-        time.sleep(0.1)
-
     return evolution_detected
 
 
@@ -930,7 +928,7 @@ def perform_full_actions(u2_device, round_count, base_colors):
     for x in drag_points_x:
         curved_drag(u2_device, x+random.randint(-2,2), start_y, x+random.randint(-2,2), end_y, duration, 6)
         time.sleep(0.05)
-    time.sleep(0.1)
+    time.sleep(0.5)
 
     # 执行随从攻击（使用统一函数
     screenshot = take_screenshot()
@@ -967,7 +965,7 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
     for x in drag_points_x:
         curved_drag(u2_device, x+random.randint(-2,2), start_y, x+random.randint(-2,2), end_y, duration, 6)
         time.sleep(0.05)
-    time.sleep(0.1)
+    time.sleep(0.5)
 
     # 获取当前截图
     screenshot = take_screenshot()
@@ -1092,7 +1090,7 @@ def main():
     EMULATOR_PORT = config["emulator_port"]
     SCAN_INTERVAL = config["scan_interval"]
 
-    skip_buttons = ['enemy_round']
+    skip_buttons = []
 
 
 
@@ -1133,6 +1131,7 @@ def main():
         'dailyCard': create_template_info(load_template(TEMPLATES_DIR, 'dailyCard.png'), "每日卡包"),
         'missionCompleted': create_template_info(load_template(TEMPLATES_DIR, 'missionCompleted.png'), "任务完成"),
         'backTitle': create_template_info(load_template(TEMPLATES_DIR, 'backTitle.png'), "返回标题"),
+        'errorBackMain': create_template_info(load_template(TEMPLATES_DIR, 'errorBackMain.png'), "遇到错误，返回主页面"),
         'error_retry': create_template_info(load_template(TEMPLATES_DIR, 'error_retry.png'), "重试"),
         'Ok': create_template_info(load_template(TEMPLATES_DIR, 'Ok.png'), "好的"),
         'decision': create_template_info(load_template(TEMPLATES_DIR, 'decision.png'), "决定"),
@@ -1276,6 +1275,10 @@ def main():
             # 获取截图
             needLogPause = True
             screenshot = take_screenshot()
+            # debug
+            # from PIL import Image
+            # screenshot = Image.open('./test_resource/1.png')
+
             if screenshot is None:
                 time.sleep(SCAN_INTERVAL)
                 continue
@@ -1321,8 +1324,13 @@ def main():
                         logger.info("检测到新对战开始")
 
                     if key == 'enemy_round':
-                        # 敌方回合开始时重置needAddRoundCount
-                        needAddRoundCount = True
+                        if key != last_detected_button:
+                            # 敌方回合开始时重置needAddRoundCount
+                            logger.info("检测到敌方回合")
+                            needAddRoundCount = True
+                            last_detected_button = key
+                        time.sleep(1)
+                        continue
 
                     if key == 'end_round' and in_match:
                         # 新增：在第一回合且未出牌时记录基准背景色
