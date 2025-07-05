@@ -658,7 +658,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
     default_target = (646, 64)
     need_scan_shield = True
 
-    # 颜色检测不够准确，先固定使用旧逻辑
+    # 颜色检测不够准确，先使用旧逻辑
     if False:
     # if base_colors:
         # 使用颜色检测
@@ -924,7 +924,7 @@ def perform_full_actions(u2_device, round_count, base_colors):
     end_y = 400+random.randint(-2,2)
     duration = 0.05
     if round_count >= 6:
-        drag_points_x = [684, 600, 700, 551, 830, 501, 900, 405, 959]
+        drag_points_x = [600, 700, 684, 551, 830, 501, 900, 405, 959]
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
     for x in drag_points_x:
@@ -960,7 +960,7 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
     end_y = 400+random.randint(-2,2)
     duration = 0.05
     if round_count >= 6:
-        drag_points_x = [684, 600, 700, 551, 830, 501, 900, 405, 959]
+        drag_points_x = [600, 700, 684, 551, 830, 501, 900, 405, 959]
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
 
