@@ -1412,9 +1412,9 @@ class ShadowverseAutomationUI(QMainWindow):
         # 控制按钮
         btn_layout = QHBoxLayout()
         self.resume_btn = QPushButton("恢复")
-        self.stop_btn = QPushButton("停止")
         self.pause_btn = QPushButton("暂停")
         self.stats_btn = QPushButton("显示统计")
+        self.stop_btn = QPushButton("停止/关闭")
 
         self.resume_btn.clicked.connect(self.resume_script)
         self.stop_btn.clicked.connect(self.stop_script)
@@ -1422,9 +1422,9 @@ class ShadowverseAutomationUI(QMainWindow):
         self.stats_btn.clicked.connect(self.show_stats)
 
         btn_layout.addWidget(self.resume_btn)
-        btn_layout.addWidget(self.stop_btn)
         btn_layout.addWidget(self.pause_btn)
         btn_layout.addWidget(self.stats_btn)
+        btn_layout.addWidget(self.stop_btn)
         btn_layout.addStretch()
 
         main_layout.addLayout(btn_layout)
