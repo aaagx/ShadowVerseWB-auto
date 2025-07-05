@@ -15,10 +15,11 @@ from ctypes import windll
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QTextEdit, QFrame, QSizePolicy, QGridLayout
+    QLineEdit, QPushButton, QTextEdit, QFrame, QGridLayout
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QPixmap, QPalette, QBrush, QColor, QFontDatabase, QIcon
+from PyQt5.QtGui import QPalette, QColor
+from PyQt5.QtWidgets import QMessageBox
 
 # 随从的位置坐标（720P分辨率）
 follower_positions = [
@@ -765,6 +766,7 @@ class ScriptThread(QThread):
     status_signal = pyqtSignal(str)
     connected_signal = pyqtSignal(bool)
     stats_signal = pyqtSignal(dict)
+    error_signal = pyqtSignal(str)
 
     def __init__(self, config, parent=None):
         super().__init__(parent)
@@ -792,210 +794,211 @@ class ScriptThread(QThread):
         logger.addHandler(ui_handler)
 
     def run(self):
-        global script_running, script_paused, device, current_round_count
-        global match_start_time, current_run_matches, current_run_start_time
-        global in_match, evolution_template, super_evolution_template, base_colors
-
-        self.start_time = time.time()
-        self.status_signal.emit("运行中")
-        self.log_signal.emit("===== 脚本开始运行 =====")
-
-        # 加载配置
-        EMULATOR_PORT = self.config["emulator_port"]
-        SCAN_INTERVAL = self.config["scan_interval"]
-
-        # 初始化设备对象
-        device = None
-
-        # 初始化进化模板
-        evolution_template = None
-        super_evolution_template = None
-
-        # 记录脚本启动时间
-        current_run_start_time = datetime.datetime.now()
-        current_run_matches = 0
-        in_match = False  # 是否在对战中
-
-        # 加载历史统计数据
-        load_round_statistics()
-
-        # 1. 加载所有模板
-        self.log_signal.emit("正在加载模板...")
-
-        self.templates = {
-            'dailyCard': create_template_info(load_template(TEMPLATES_DIR, 'dailyCard.png'), "每日卡包"),
-            'missionCompleted': create_template_info(load_template(TEMPLATES_DIR, 'missionCompleted.png'), "任务完成"),
-            'backTitle': create_template_info(load_template(TEMPLATES_DIR, 'backTitle.png'), "返回标题"),
-            'errorBackMain': create_template_info(load_template(TEMPLATES_DIR, 'errorBackMain.png'), "遇到错误，返回主页面"),
-            'error_retry': create_template_info(load_template(TEMPLATES_DIR, 'error_retry.png'), "重试"),
-            'Ok': create_template_info(load_template(TEMPLATES_DIR, 'Ok.png'), "好的"),
-            'decision': create_template_info(load_template(TEMPLATES_DIR, 'decision.png'), "决定"),
-            'end_round': create_template_info(load_template(TEMPLATES_DIR, 'end_round.png'), "结束回合"),
-            'enemy_round': create_template_info(load_template(TEMPLATES_DIR, 'enemy_round.png'), "敌方回合"),
-            'end': create_template_info(load_template(TEMPLATES_DIR, 'end.png'), "结束"),
-            'war': create_template_info(load_template(TEMPLATES_DIR, 'war.png'), "决斗"),
-            'mainPage': create_template_info(load_template(TEMPLATES_DIR, 'mainPage.png'), "游戏主页面"),
-            'MuMuPage': create_template_info(load_template(TEMPLATES_DIR, 'MuMuPage.png'), "MuMu主页面"),
-            'LoginPage': create_template_info(load_template(TEMPLATES_DIR, 'LoginPage.png'), "排队主界面"),
-            'enterGame': create_template_info(load_template(TEMPLATES_DIR, 'enterGame.png'), "排队进入"),
-            'yes': create_template_info(load_template(TEMPLATES_DIR, 'Yes.png'), "继续中断的对战"),
-            'close1': create_template_info(load_template(TEMPLATES_DIR, 'close1.png'), "关闭卡组预览/编辑"),
-            'close2': create_template_info(load_template(TEMPLATES_DIR, 'close2.png'), "关闭卡组预览/编辑"),
-            'backMain': create_template_info(load_template(TEMPLATES_DIR, 'backMain.png'), "返回主页面"),
-            'rankUp': create_template_info(load_template(TEMPLATES_DIR, 'rankUp.png'), "阶位提升"),
-            'groupUp': create_template_info(load_template(TEMPLATES_DIR, 'groupUp.png'), "分组升级"),
-            'rank': create_template_info(load_template(TEMPLATES_DIR, 'rank.png'), "阶级积分"),
-        }
-
-        extra_dir = self.config.get("extra_templates_dir", "")
-        if extra_dir and os.path.isdir(extra_dir):
-            self.log_signal.emit(f"开始加载额外模板目录: {extra_dir}")
-
-            # 支持的图片扩展名
-            valid_extensions = ['.png', '.jpg', '.jpeg', '.bmp']
-
-            for filename in os.listdir(extra_dir):
-                filepath = os.path.join(extra_dir, filename)
-
-                # 检查是否是图片文件
-                if os.path.isfile(filepath) and os.path.splitext(filename)[1].lower() in valid_extensions:
-                    template_name = os.path.splitext(filename)[0]  # 使用文件名作为模板名称
-
-                    # 加载模板
-                    template_img = load_template(extra_dir, filename)
-                    if template_img is None:
-                        self.log_signal.emit(f"无法加载额外模板: {filename}")
-                        continue
-
-                    # 创建模板信息（使用全局阈值）
-                    template_info = create_template_info(
-                        template_img,
-                        f"额外模板-{template_name}",
-                        threshold=self.config["evolution_threshold"]
-                    )
-
-                    # 添加到模板字典（如果已存在则跳过）
-                    if template_name not in self.templates:
-                        self.templates[template_name] = template_info
-                        self.log_signal.emit(f"已添加额外模板: {template_name} (来自: {filename})")
-
-        self.log_signal.emit("模板加载完成")
-
-        # 2. 连接设备
-        self.log_signal.emit("正在连接设备...")
         try:
-            import adbutils
-            from adbutils import adb, AdbClient
-            import uiautomator2 as u2
+            global script_running, script_paused, device, current_round_count
+            global match_start_time, current_run_matches, current_run_start_time
+            global in_match, evolution_template, super_evolution_template, base_colors
 
-            # 创建 adb 客户端
-            client = AdbClient(host="127.0.0.1")
+            self.start_time = time.time()
+            self.status_signal.emit("运行中")
+            self.log_signal.emit("===== 脚本开始运行 =====")
 
-            # 目标设备序列号
-            target_serial = f"127.0.0.1:{EMULATOR_PORT}"
+            # 加载配置
+            EMULATOR_PORT = self.config["emulator_port"]
+            SCAN_INTERVAL = self.config["scan_interval"]
 
-            # 检查是否已连接目标模拟器
-            devices_list = client.device_list()
-            emulator_connected = any(d.serial == target_serial for d in devices_list)
+            # 初始化设备对象
+            device = None
 
-            if not emulator_connected:
-                self.log_signal.emit(f"尝试自动连接模拟器({target_serial})...")
-                try:
-                    adb.connect(target_serial)
-                    time.sleep(2)  # 等待连接稳定
-                    devices_list = client.device_list()
-                    emulator_connected = any(d.serial == target_serial for d in devices_list)
-                    if emulator_connected:
-                        self.log_signal.emit(f"模拟器连接成功: {target_serial}")
-                    else:
-                        self.log_signal.emit(f"连接模拟器失败: 未出现在 device_list 中")
-                except Exception as conn_err:
-                    self.log_signal.emit(f"adbutils 连接失败: {conn_err}")
+            # 初始化进化模板
+            evolution_template = None
+            super_evolution_template = None
 
-            # 获取设备列表（再次获取以确保最新）
-            devices_list = client.device_list()
-            if not devices_list:
-                raise RuntimeError("未找到连接的设备，请确保模拟器已启动")
+            # 记录脚本启动时间
+            current_run_start_time = datetime.datetime.now()
+            current_run_matches = 0
+            in_match = False  # 是否在对战中
 
-            # 查找目标设备
-            target_device = None
-            for d in devices_list:
-                if d.serial == target_serial:
-                    target_device = d
-                    break
+            # 加载历史统计数据
+            load_round_statistics()
 
-            if not target_device:
-                target_device = devices_list[0]
-                self.log_signal.emit(f"未找到配置的模拟器({target_serial})，使用第一个设备: {target_device.serial}")
+            # 1. 加载所有模板
+            self.log_signal.emit("正在加载模板...")
 
-            # 获取 adbutils 设备对象
-            device = adb.device(serial=target_device.serial)
-            self.log_signal.emit(f"已连接设备: {target_device.serial}")
+            self.templates = {
+                'dailyCard': create_template_info(load_template(TEMPLATES_DIR, 'dailyCard.png'), "每日卡包"),
+                'missionCompleted': create_template_info(load_template(TEMPLATES_DIR, 'missionCompleted.png'), "任务完成"),
+                'backTitle': create_template_info(load_template(TEMPLATES_DIR, 'backTitle.png'), "返回标题"),
+                'errorBackMain': create_template_info(load_template(TEMPLATES_DIR, 'errorBackMain.png'), "遇到错误，返回主页面"),
+                'error_retry': create_template_info(load_template(TEMPLATES_DIR, 'error_retry.png'), "重试"),
+                'Ok': create_template_info(load_template(TEMPLATES_DIR, 'Ok.png'), "好的"),
+                'decision': create_template_info(load_template(TEMPLATES_DIR, 'decision.png'), "决定"),
+                'end_round': create_template_info(load_template(TEMPLATES_DIR, 'end_round.png'), "结束回合"),
+                'enemy_round': create_template_info(load_template(TEMPLATES_DIR, 'enemy_round.png'), "敌方回合"),
+                'end': create_template_info(load_template(TEMPLATES_DIR, 'end.png'), "结束"),
+                'war': create_template_info(load_template(TEMPLATES_DIR, 'war.png'), "决斗"),
+                'mainPage': create_template_info(load_template(TEMPLATES_DIR, 'mainPage.png'), "游戏主页面"),
+                'MuMuPage': create_template_info(load_template(TEMPLATES_DIR, 'MuMuPage.png'), "MuMu主页面"),
+                'LoginPage': create_template_info(load_template(TEMPLATES_DIR, 'LoginPage.png'), "排队主界面"),
+                'enterGame': create_template_info(load_template(TEMPLATES_DIR, 'enterGame.png'), "排队进入"),
+                'yes': create_template_info(load_template(TEMPLATES_DIR, 'Yes.png'), "继续中断的对战"),
+                'close1': create_template_info(load_template(TEMPLATES_DIR, 'close1.png'), "关闭卡组预览/编辑"),
+                'close2': create_template_info(load_template(TEMPLATES_DIR, 'close2.png'), "关闭卡组预览/编辑"),
+                'backMain': create_template_info(load_template(TEMPLATES_DIR, 'backMain.png'), "返回主页面"),
+                'rankUp': create_template_info(load_template(TEMPLATES_DIR, 'rankUp.png'), "阶位提升"),
+                'groupUp': create_template_info(load_template(TEMPLATES_DIR, 'groupUp.png'), "分组升级"),
+                'rank': create_template_info(load_template(TEMPLATES_DIR, 'rank.png'), "阶级积分"),
+            }
 
-            # 获取 uiautomator2 设备对象
-            u2_device = u2.connect(target_device.serial)
-            self.u2_device = u2_device
-            self.adb_device = device
-            self.log_signal.emit("设备连接成功")
-        except Exception as e:
-            self.log_signal.emit(f"设备连接失败: {str(e)}")
-            self.status_signal.emit("连接失败")
-            return
+            extra_dir = self.config.get("extra_templates_dir", "")
+            if extra_dir and os.path.isdir(extra_dir):
+                self.log_signal.emit(f"开始加载额外模板目录: {extra_dir}")
 
-        # 3. 检测脚本启动时是否已经在对战中
-        self.log_signal.emit("检测当前游戏状态...")
-        init_screenshot = take_screenshot()
-        if init_screenshot is not None:
-            # 转换为OpenCV格式
-            init_screenshot_np = np.array(init_screenshot)
-            init_screenshot_cv = cv2.cvtColor(init_screenshot_np, cv2.COLOR_RGB2BGR)
-            gray_init_screenshot = cv2.cvtColor(init_screenshot_cv, cv2.COLOR_BGR2GRAY)
+                # 支持的图片扩展名
+                valid_extensions = ['.png', '.jpg', '.jpeg', '.bmp']
 
-            # 检测是否已经在游戏中
-            end_round_info = self.templates['end_round']
-            enemy_round_info = self.templates['enemy_round']
-            decision_info = self.templates['decision']
+                for filename in os.listdir(extra_dir):
+                    filepath = os.path.join(extra_dir, filename)
 
-            # 检测我方回合
-            if end_round_info:
-                max_loc, max_val = match_template(gray_init_screenshot, end_round_info)
-                if max_val >= end_round_info['threshold']:
-                    in_match = True
-                    match_start_time = time.time()
-                    current_round_count = 2
-                    self.log_signal.emit("脚本启动时检测到已处于我方回合，自动设置回合数为2")
+                    # 检查是否是图片文件
+                    if os.path.isfile(filepath) and os.path.splitext(filename)[1].lower() in valid_extensions:
+                        template_name = os.path.splitext(filename)[0]  # 使用文件名作为模板名称
 
-            # 检测敌方回合
-            if enemy_round_info:
-                max_loc, max_val = match_template(gray_init_screenshot, enemy_round_info)
-                if max_val >= enemy_round_info['threshold']:
-                    in_match = True
-                    match_start_time = time.time()
-                    current_round_count = 2
-                    self.log_signal.emit("脚本启动时检测到已处于敌方回合，自动设置回合数为2")
+                        # 加载模板
+                        template_img = load_template(extra_dir, filename)
+                        if template_img is None:
+                            self.log_signal.emit(f"无法加载额外模板: {filename}")
+                            continue
 
-            # 检测换牌开场
-            if decision_info:
-                max_loc, max_val = match_template(gray_init_screenshot, decision_info)
-                if max_val >= decision_info['threshold']:
-                    in_match = True
-                    match_start_time = time.time()
-                    current_round_count = 1
-                    self.log_signal.emit("脚本启动时检测到已处于换牌阶段，自动设置回合数为1")
-        else:
-            self.log_signal.emit("无法获取初始截图，跳过状态检测")
+                        # 创建模板信息（使用全局阈值）
+                        template_info = create_template_info(
+                            template_img,
+                            f"额外模板-{template_name}",
+                            threshold=self.config["evolution_threshold"]
+                        )
 
-        last_detected_button = None
-        base_colors = None
+                        # 添加到模板字典（如果已存在则跳过）
+                        if template_name not in self.templates:
+                            self.templates[template_name] = template_info
+                            self.log_signal.emit(f"已添加额外模板: {template_name} (来自: {filename})")
 
-        # 5. 主循环
-        self.log_signal.emit("脚本初始化完成，开始运行...")
-        self.log_signal.emit("模拟器请调成1280x720分辨率")
+            self.log_signal.emit("模板加载完成")
 
-        # 防倒卖声明
-        red_start = "<font color='red'>"
-        red_end = "</font>"
-        message = f"""
+            # 2. 连接设备
+            self.log_signal.emit("正在连接设备...")
+            try:
+                import adbutils
+                from adbutils import adb, AdbClient
+                import uiautomator2 as u2
+
+                # 创建 adb 客户端
+                client = AdbClient(host="127.0.0.1")
+
+                # 目标设备序列号
+                target_serial = f"127.0.0.1:{EMULATOR_PORT}"
+
+                # 检查是否已连接目标模拟器
+                devices_list = client.device_list()
+                emulator_connected = any(d.serial == target_serial for d in devices_list)
+
+                if not emulator_connected:
+                    self.log_signal.emit(f"尝试自动连接模拟器({target_serial})...")
+                    try:
+                        adb.connect(target_serial)
+                        time.sleep(2)  # 等待连接稳定
+                        devices_list = client.device_list()
+                        emulator_connected = any(d.serial == target_serial for d in devices_list)
+                        if emulator_connected:
+                            self.log_signal.emit(f"模拟器连接成功: {target_serial}")
+                        else:
+                            self.log_signal.emit(f"连接模拟器失败: 未出现在 device_list 中")
+                    except Exception as conn_err:
+                        self.log_signal.emit(f"adbutils 连接失败: {conn_err}")
+
+                # 获取设备列表（再次获取以确保最新）
+                devices_list = client.device_list()
+                if not devices_list:
+                    raise RuntimeError("未找到连接的设备，请确保模拟器已启动")
+
+                # 查找目标设备
+                target_device = None
+                for d in devices_list:
+                    if d.serial == target_serial:
+                        target_device = d
+                        break
+
+                if not target_device:
+                    target_device = devices_list[0]
+                    self.log_signal.emit(f"未找到配置的模拟器({target_serial})，使用第一个设备: {target_device.serial}")
+
+                # 获取 adbutils 设备对象
+                device = adb.device(serial=target_device.serial)
+                self.log_signal.emit(f"已连接设备: {target_device.serial}")
+
+                # 获取 uiautomator2 设备对象
+                u2_device = u2.connect(target_device.serial)
+                self.u2_device = u2_device
+                self.adb_device = device
+                self.log_signal.emit("设备连接成功")
+            except Exception as e:
+                self.log_signal.emit(f"设备连接失败: {str(e)}")
+                self.status_signal.emit("连接失败")
+                return
+
+            # 3. 检测脚本启动时是否已经在对战中
+            self.log_signal.emit("检测当前游戏状态...")
+            init_screenshot = take_screenshot()
+            if init_screenshot is not None:
+                # 转换为OpenCV格式
+                init_screenshot_np = np.array(init_screenshot)
+                init_screenshot_cv = cv2.cvtColor(init_screenshot_np, cv2.COLOR_RGB2BGR)
+                gray_init_screenshot = cv2.cvtColor(init_screenshot_cv, cv2.COLOR_BGR2GRAY)
+
+                # 检测是否已经在游戏中
+                end_round_info = self.templates['end_round']
+                enemy_round_info = self.templates['enemy_round']
+                decision_info = self.templates['decision']
+
+                # 检测我方回合
+                if end_round_info:
+                    max_loc, max_val = match_template(gray_init_screenshot, end_round_info)
+                    if max_val >= end_round_info['threshold']:
+                        in_match = True
+                        match_start_time = time.time()
+                        current_round_count = 2
+                        self.log_signal.emit("脚本启动时检测到已处于我方回合，自动设置回合数为2")
+
+                # 检测敌方回合
+                if enemy_round_info:
+                    max_loc, max_val = match_template(gray_init_screenshot, enemy_round_info)
+                    if max_val >= enemy_round_info['threshold']:
+                        in_match = True
+                        match_start_time = time.time()
+                        current_round_count = 2
+                        self.log_signal.emit("脚本启动时检测到已处于敌方回合，自动设置回合数为2")
+
+                # 检测换牌开场
+                if decision_info:
+                    max_loc, max_val = match_template(gray_init_screenshot, decision_info)
+                    if max_val >= decision_info['threshold']:
+                        in_match = True
+                        match_start_time = time.time()
+                        current_round_count = 1
+                        self.log_signal.emit("脚本启动时检测到已处于换牌阶段，自动设置回合数为1")
+            else:
+                self.log_signal.emit("无法获取初始截图，跳过状态检测")
+
+            last_detected_button = None
+            base_colors = None
+
+            # 5. 主循环
+            self.log_signal.emit("脚本初始化完成，开始运行...")
+            self.log_signal.emit("模拟器请调成1280x720分辨率")
+
+            # 防倒卖声明
+            red_start = "<font color='red'>"
+            red_end = "</font>"
+            message = f"""
 {red_start}
 【提示】本脚本为免费开源项目，您无需付费即可获取。
 若您通过付费渠道购买，可能已遭遇误导。
@@ -1003,176 +1006,181 @@ class ScriptThread(QThread):
 警惕倒卖行为！
 {red_end}
 """
-        self.log_signal.emit(message.strip())
+            self.log_signal.emit(message.strip())
 
-        needLogPause = True
-        needAddRoundCount = True
-        while self.running:
-            start_time = time.time()
-
-            # 检查脚本暂停状态
-            if self.paused:
-                if needLogPause:
-                    # 记录暂停信息
-                    self.log_signal.emit("脚本暂停中...")
-                    needLogPause = False
-                # 在暂停状态下每1秒检查一次
-                time.sleep(1)
-                continue
-
-            # 获取截图
             needLogPause = True
-            screenshot = take_screenshot()
-            # debug
-            # from PIL import Image
-            # screenshot = Image.open('./test_resource/1.png')
+            needAddRoundCount = True
+            while self.running:
+                start_time = time.time()
 
-            if screenshot is None:
-                time.sleep(SCAN_INTERVAL)
-                continue
-
-            # 转换为OpenCV格式
-            screenshot_np = np.array(screenshot)
-            screenshot_cv = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2BGR)
-            gray_screenshot = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
-
-            # 检查其他按钮
-            button_detected = False
-            for key, template_info in self.templates.items():  # 遍历所有模板（包括动态加载的）
-                if not template_info:
+                # 检查脚本暂停状态
+                if self.paused:
+                    if needLogPause:
+                        # 记录暂停信息
+                        self.log_signal.emit("脚本暂停中...")
+                        needLogPause = False
+                    # 在暂停状态下每1秒检查一次
+                    time.sleep(1)
                     continue
 
-                max_loc, max_val = match_template(gray_screenshot, template_info)
-                if max_val >= template_info['threshold']:
-                    if key != last_detected_button:
-                        if key == 'end_round' and in_match:
-                            self.log_signal.emit(f"已发现'结束回合'按钮 (当前回合: {current_round_count})")
+                # 获取截图
+                needLogPause = True
+                screenshot = take_screenshot()
+                # debug
+                # from PIL import Image
+                # screenshot = Image.open('./test_resource/1.png')
 
-                    # 处理每日卡包
-                    if key == 'dailyCard':
-                        #点击固定位置跳过
-                        self.log_signal.emit("检测到每日卡包，尝试跳过")
-                        self.u2_device.click(717, 80)
+                if screenshot is None:
+                    time.sleep(SCAN_INTERVAL)
+                    continue
 
-                    # 处理对战开始/结束逻辑
-                    if key == 'war':
-                        # 检测到"决斗"按钮，表示新对战开始
-                        if in_match:
-                            # 如果已经在战斗中，先结束当前对战
-                            self.end_current_match()
-                            self.log_signal.emit("检测到新对战开始，结束上一场对战")
-                        # 开始新的对战
-                        base_colors = None  # 重置开局基准背景色
-                        self.start_new_match()
-                        in_match = True
-                        self.log_signal.emit("检测到新对战开始")
+                # 转换为OpenCV格式
+                screenshot_np = np.array(screenshot)
+                screenshot_cv = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2BGR)
+                gray_screenshot = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
 
-                    if key == 'enemy_round':
-                        if key != last_detected_button:
-                            # 敌方回合开始时重置needAddRoundCount
-                            self.log_signal.emit("检测到敌方回合")
-                            needAddRoundCount = True
-                            last_detected_button = key
-                        time.sleep(1)
+                # 检查其他按钮
+                button_detected = False
+                for key, template_info in self.templates.items():  # 遍历所有模板（包括动态加载的）
+                    if not template_info:
                         continue
 
-                    if key == 'end_round' and in_match:
-                        # 新增：在第一回合且未出牌时记录基准背景色
-                        if current_round_count == 1 and base_colors is None:
-                            base_colors = []
-                            for pos in follower_positions:
-                                x, y = pos
-                                # 记录当前位置的色彩
-                                color1 = screenshot.getpixel((x, y))
-                                # 记录Y轴向下20个像素点的色彩
-                                color2 = screenshot.getpixel((x, y + 20))
-                                base_colors.append((color1, color2))
-                            self.log_signal.emit("第1回合，记录基准背景色完成")
+                    max_loc, max_val = match_template(gray_screenshot, template_info)
+                    if max_val >= template_info['threshold']:
+                        if key != last_detected_button:
+                            if key == 'end_round' and in_match:
+                                self.log_signal.emit(f"已发现'结束回合'按钮 (当前回合: {current_round_count})")
 
-                        self_shield_targets = scan_self_shield_targets()
-                        if self_shield_targets:
-                            # 暂停脚本并通知用户
-                            self.paused = True
-                            self.log_signal.emit(f"检测到己方护盾目标！脚本已暂停")
+                        # 处理每日卡包
+                        if key == 'dailyCard':
+                            #点击固定位置跳过
+                            self.log_signal.emit("检测到每日卡包，尝试跳过")
+                            self.u2_device.click(717, 80)
 
-                            # 获取最高置信度的目标
-                            best_target = self_shield_targets[0]
-                            self.log_signal.emit(
-                                f"检测到己方护盾随从！位置: ({best_target['x']}, {best_target['y']}), "
-                                f"置信度: {best_target['confidence']:.2f}\n"
-                                "脚本已暂停，请手动处理。"
-                            )
+                        # 处理对战开始/结束逻辑
+                        if key == 'war':
+                            # 检测到"决斗"按钮，表示新对战开始
+                            if in_match:
+                                # 如果已经在战斗中，先结束当前对战
+                                self.end_current_match()
+                                self.log_signal.emit("检测到新对战开始，结束上一场对战")
+                            # 开始新的对战
+                            base_colors = None  # 重置开局基准背景色
+                            self.start_new_match()
+                            in_match = True
+                            self.log_signal.emit("检测到新对战开始")
 
-                            # 跳过后续操作
-                            last_detected_button = key
-                            button_detected = True
-                            break
-
-                        if current_round_count in (4, 5, 6, 7, 8):  # 第4 ，5，6 ,7,8回合
-                            self.log_signal.emit(f"第{current_round_count}回合，执行进化/超进化")
-                            perform_fullPlus_actions(self.u2_device, current_round_count, base_colors)
-                        elif current_round_count > 12:   #12回合以上弃权防止烧绳
-                            self.log_signal.emit(f"12回合以上，直接弃权")
-                            time.sleep(0.5)
-                            self.u2_device.click(57, 63)
-                            time.sleep(0.5)
-                            self.u2_device.click(642, 148)
-                            time.sleep(0.5)
-                            self.u2_device.click(773, 560)
+                        if key == 'enemy_round':
+                            if key != last_detected_button:
+                                # 敌方回合开始时重置needAddRoundCount
+                                self.log_signal.emit("检测到敌方回合")
+                                needAddRoundCount = True
+                                last_detected_button = key
                             time.sleep(1)
-                        else:
-                            self.log_signal.emit(f"第{current_round_count}回合，执行正常操作")
-                            perform_full_actions(self.u2_device, current_round_count, base_colors)
+                            continue
 
-                        if needAddRoundCount:
-                            current_round_count += 1
-                            needAddRoundCount = False
+                        if key == 'end_round' and in_match:
+                            # 新增：在第一回合且未出牌时记录基准背景色
+                            if current_round_count == 1 and base_colors is None:
+                                base_colors = []
+                                for pos in follower_positions:
+                                    x, y = pos
+                                    # 记录当前位置的色彩
+                                    color1 = screenshot.getpixel((x, y))
+                                    # 记录Y轴向下20个像素点的色彩
+                                    color2 = screenshot.getpixel((x, y + 20))
+                                    base_colors.append((color1, color2))
+                                self.log_signal.emit("第1回合，记录基准背景色完成")
 
-                    # 计算中心点并点击
-                    center_x = max_loc[0] + template_info['w'] // 2
-                    center_y = max_loc[1] + template_info['h'] // 2
-                    self.u2_device.click(center_x + random.randint(-2, 2), center_y + random.randint(-2, 2))
-                    button_detected = True
+                            self_shield_targets = scan_self_shield_targets()
+                            if self_shield_targets:
+                                # 暂停脚本并通知用户
+                                self.paused = True
+                                self.log_signal.emit(f"检测到己方护盾目标！脚本已暂停")
 
-                    if key != last_detected_button:
-                        self.log_signal.emit(f"检测到按钮并点击: {template_info['name']} ")
-                    # 更新状态跟踪
-                    last_detected_button = key
-                    time.sleep(0.5)
-                    break
+                                # 获取最高置信度的目标
+                                best_target = self_shield_targets[0]
+                                self.log_signal.emit(
+                                    f"检测到己方护盾随从！位置: ({best_target['x']}, {best_target['y']}), "
+                                    f"置信度: {best_target['confidence']:.2f}\n"
+                                    "脚本已暂停，请手动处理。"
+                                )
 
-            # 更新统计信息
-            stats = {
-                'current_turn': current_round_count,
-                'run_time': int(time.time() - self.start_time),
-                'battle_count': current_run_matches,
-                'turn_count': current_round_count * current_run_matches
-            }
-            self.stats_signal.emit(stats)
+                                # 跳过后续操作
+                                last_detected_button = key
+                                button_detected = True
+                                break
 
-            # 计算处理时间并调整等待
-            process_time = time.time() - start_time
-            sleep_time = max(0, SCAN_INTERVAL - process_time)
-            time.sleep(sleep_time)
+                            if current_round_count in (4, 5, 6, 7, 8):  # 第4 ，5，6 ,7,8回合
+                                self.log_signal.emit(f"第{current_round_count}回合，执行进化/超进化")
+                                perform_fullPlus_actions(self.u2_device, current_round_count, base_colors)
+                            elif current_round_count > 12:   #12回合以上弃权防止烧绳
+                                self.log_signal.emit(f"12回合以上，直接弃权")
+                                time.sleep(0.5)
+                                self.u2_device.click(57, 63)
+                                time.sleep(0.5)
+                                self.u2_device.click(642, 148)
+                                time.sleep(0.5)
+                                self.u2_device.click(773, 560)
+                                time.sleep(1)
+                            else:
+                                self.log_signal.emit(f"第{current_round_count}回合，执行正常操作")
+                                perform_full_actions(self.u2_device, current_round_count, base_colors)
 
-        # 结束当前对战（如果正在进行）
-        if in_match:
-            self.end_current_match()
+                            if needAddRoundCount:
+                                current_round_count += 1
+                                needAddRoundCount = False
 
-        # 保存统计数据
-        save_round_statistics()
+                        # 计算中心点并点击
+                        center_x = max_loc[0] + template_info['w'] // 2
+                        center_y = max_loc[1] + template_info['h'] // 2
+                        self.u2_device.click(center_x + random.randint(-2, 2), center_y + random.randint(-2, 2))
+                        button_detected = True
 
-        # 结束信息
-        run_duration = datetime.datetime.now() - current_run_start_time
-        hours, remainder = divmod(run_duration.total_seconds(), 3600)
-        minutes, seconds = divmod(remainder, 60)
+                        if key != last_detected_button:
+                            self.log_signal.emit(f"检测到按钮并点击: {template_info['name']} ")
+                        # 更新状态跟踪
+                        last_detected_button = key
+                        time.sleep(0.5)
+                        break
 
-        self.log_signal.emit("\n===== 本次运行总结 =====")
-        self.log_signal.emit(f"脚本启动时间: {current_run_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        self.log_signal.emit(f"运行时长: {int(hours)}小时{int(minutes)}分钟{int(seconds)}秒")
-        self.log_signal.emit(f"完成对战次数: {current_run_matches}")
-        self.log_signal.emit("===== 脚本结束运行 =====")
-        self.status_signal.emit("已停止")
+                # 更新统计信息
+                stats = {
+                    'current_turn': current_round_count,
+                    'run_time': int(time.time() - self.start_time),
+                    'battle_count': current_run_matches,
+                    'turn_count': current_round_count * current_run_matches
+                }
+                self.stats_signal.emit(stats)
+
+                # 计算处理时间并调整等待
+                process_time = time.time() - start_time
+                sleep_time = max(0, SCAN_INTERVAL - process_time)
+                time.sleep(sleep_time)
+
+            # 结束当前对战（如果正在进行）
+            if in_match:
+                self.end_current_match()
+
+            # 保存统计数据
+            save_round_statistics()
+
+            # 结束信息
+            run_duration = datetime.datetime.now() - current_run_start_time
+            hours, remainder = divmod(run_duration.total_seconds(), 3600)
+            minutes, seconds = divmod(remainder, 60)
+
+            self.log_signal.emit("\n===== 本次运行总结 =====")
+            self.log_signal.emit(f"脚本启动时间: {current_run_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            self.log_signal.emit(f"运行时长: {int(hours)}小时{int(minutes)}分钟{int(seconds)}秒")
+            self.log_signal.emit(f"完成对战次数: {current_run_matches}")
+            self.log_signal.emit("===== 脚本结束运行 =====")
+            self.status_signal.emit("已停止")
+        except Exception as e:
+            error_msg = f"脚本运行出错: {str(e)}"
+            logger.error(error_msg)
+            self.error_signal.emit(f"{str(e)}")
+            return
 
     def start_new_match(self):
         """开始新的对战"""
@@ -1246,7 +1254,6 @@ class ShadowverseAutomationUI(QMainWindow):
         self.script_thread = None
         self.run_time = 0
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_run_time)
 
         # 窗口控制按钮状态
         self.is_maximized = False
@@ -1386,12 +1393,12 @@ class ShadowverseAutomationUI(QMainWindow):
         adb_layout = QHBoxLayout()
         adb_label = QLabel("ADB 端口:")
         self.adb_input = QLineEdit(f"127.0.0.1:{self.config["emulator_port"]}")
-        self.connect_btn = QPushButton("开始")
-        self.connect_btn.clicked.connect(self.connect_device)
+        self.start_btn = QPushButton("开始")
+        self.start_btn.clicked.connect(self.start_script)
 
         adb_layout.addWidget(adb_label)
         adb_layout.addWidget(self.adb_input)
-        adb_layout.addWidget(self.connect_btn)
+        adb_layout.addWidget(self.start_btn)
         adb_layout.addStretch()
 
         status_label = QLabel("状态:")
@@ -1481,9 +1488,9 @@ class ShadowverseAutomationUI(QMainWindow):
             self.maximize_btn.setText("❐")
             self.is_maximized = True
 
-    def connect_device(self):
+    def start_script(self):
         self.log_output.append("正在连接设备...")
-        self.connect_btn.setEnabled(False)
+        self.start_btn.setEnabled(False)
 
         # 加载配置
         config = self.config
@@ -1497,6 +1504,7 @@ class ShadowverseAutomationUI(QMainWindow):
         self.script_thread.log_signal.connect(self.log_output.append)
         self.script_thread.status_signal.connect(self.update_status)
         self.script_thread.stats_signal.connect(self.update_stats)
+        self.script_thread.error_signal.connect(self.handle_script_error)
         self.script_thread.start()
 
         # 更新按钮状态
@@ -1509,23 +1517,27 @@ class ShadowverseAutomationUI(QMainWindow):
         if self.script_thread:
             self.script_thread.resume()
             self.resume_btn.setEnabled(False)
-            self.stop_btn.setEnabled(True)
-            self.pause_btn.setEnabled(True)
-            self.stats_btn.setEnabled(True)
-            self.timer.start(1000)  # 每秒更新一次运行时间
+
+    def handle_script_error(self, error_msg):
+        self.log_output.append(f"脚本线程错误: {error_msg}")
+        # 重置按钮状态
+        self.start_btn.setEnabled(True)
+        self.resume_btn.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
 
     def stop_script(self):
         if self.script_thread:
             self.script_thread.stop()
-            self.connect_btn.setEnabled(True)
+            self.start_btn.setEnabled(True)
             self.resume_btn.setEnabled(False)
             self.stop_btn.setEnabled(False)
             self.pause_btn.setEnabled(False)
-            self.timer.stop()
 
     def pause_script(self):
         if self.script_thread:
             self.script_thread.pause()
+            self.resume_btn.setEnabled(True)
 
     def show_stats(self):
         self.log_output.append("===== 对战统计 =====")
@@ -1544,7 +1556,6 @@ class ShadowverseAutomationUI(QMainWindow):
             self.status_label.setStyleSheet("color: #107c10;")
         elif status == "已暂停":
             self.status_label.setStyleSheet("color: #d83b01;")
-            self.timer.stop()
         else:
             self.status_label.setStyleSheet("color: #FF5555;")
 
@@ -1580,5 +1591,5 @@ if __name__ == "__main__":
         window.show()
         sys.exit(app.exec_())
     except Exception as e:
-        print(f"程序崩溃: {e}")
-        input("按 Enter 退出...")
+        # 弹窗提示错误
+        QMessageBox.critical(None, "错误", f"程序崩溃: {e}")
