@@ -87,10 +87,6 @@ console_handler.setFormatter(console_formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-# 全局状态变量
-script_running = True
-script_paused = False
-
 # 回合统计相关变量
 current_round_count = 1  # 当前对战的回合数
 match_start_time = None  # 当前对战开始时间
@@ -795,7 +791,7 @@ class ScriptThread(QThread):
 
     def run(self):
         try:
-            global script_running, script_paused, device, current_round_count
+            global device, current_round_count
             global match_start_time, current_run_matches, current_run_start_time
             global in_match, evolution_template, super_evolution_template, base_colors
 
@@ -818,6 +814,10 @@ class ScriptThread(QThread):
             current_run_start_time = datetime.datetime.now()
             current_run_matches = 0
             in_match = False  # 是否在对战中
+
+            #其余初始化
+            match_start_time = None
+            base_colors = None
 
             # 加载历史统计数据
             load_round_statistics()
@@ -1519,20 +1519,21 @@ class ShadowverseAutomationUI(QMainWindow):
             self.resume_btn.setEnabled(False)
 
     def handle_script_error(self, error_msg):
-        self.log_output.append(f"脚本线程错误: {error_msg}")
+        self.log_output.append(f"脚本线程错误，请关闭并重启脚本后尝试，错误信息:\n {error_msg}")
         # 重置按钮状态
-        self.start_btn.setEnabled(True)
+        self.start_btn.setEnabled(False)
         self.resume_btn.setEnabled(False)
         self.stop_btn.setEnabled(False)
         self.pause_btn.setEnabled(False)
 
     def stop_script(self):
         if self.script_thread:
-            self.script_thread.stop()
-            self.start_btn.setEnabled(True)
+            self.log_output.append(f"脚本已停止")
+            self.start_btn.setEnabled(False)
             self.resume_btn.setEnabled(False)
             self.stop_btn.setEnabled(False)
             self.pause_btn.setEnabled(False)
+            self.close()
 
     def pause_script(self):
         if self.script_thread:
@@ -1591,5 +1592,6 @@ if __name__ == "__main__":
         window.show()
         sys.exit(app.exec_())
     except Exception as e:
+        logger.error(f"程序崩溃: {e}")
         # 弹窗提示错误
         QMessageBox.critical(None, "错误", f"程序崩溃: {e}")
