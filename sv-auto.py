@@ -261,7 +261,7 @@ def load_round_statistics():
     except Exception as e:
         logger.error(f"加载统计数据失败: {str(e)}")
 
-def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=8):
+def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=3):
     """
     模拟曲线拖拽操作
     :param u2_device: 设备对象
@@ -273,6 +273,7 @@ def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=8):
     :param steps: 拖拽路径中的步骤数
     """
     u2_device.touch.down(start_x, start_y)
+    time.sleep(0.025)
 
     for i in range(1, steps + 1):
         t = i / steps
@@ -283,6 +284,8 @@ def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=8):
         u2_device.touch.move(int(xi), int(yi))
         time.sleep(duration / steps)
 
+    u2_device.touch.move(end_x, end_y)
+    time.sleep(0.025)
     u2_device.touch.up(end_x, end_y)
 
 def load_evolution_template():
@@ -389,7 +392,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
                 # 确保坐标是整数
                 target_x = int(target_x)
                 target_y = int(target_y)
-                curved_drag(u2_device, x, y, target_x, target_y, 0.05, 3)
+                curved_drag(u2_device, x, y, target_x, target_y, 0.03, 3)
                 time.sleep(attackDelay)
     else:
         # 后备方案：执行简易坐标
@@ -416,7 +419,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             # 确保坐标是整数
             target_x = int(target_x)
             target_y = int(target_y)
-            curved_drag(u2_device, x, y, target_x, target_y, 0.05, 3)
+            curved_drag(u2_device, x, y, target_x, target_y, 0.03, 3)
             time.sleep(attackDelay)
 
     # 避免攻击被卡掉
@@ -593,13 +596,13 @@ def perform_full_actions(u2_device, round_count, base_colors):
     # 出牌拖拽（大于6回合时从中心向两侧）
     start_y = 672 + random.randint(-2, 2)
     end_y = 400 + random.randint(-2, 2)
-    duration = 0.05
+    duration = 0.03
     if round_count >= 6:
         drag_points_x = [600, 700, 684, 551, 830, 501, 900, 405, 959]
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
     for x in drag_points_x:
-        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, 6)
+        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, 3)
         time.sleep(0.05)
     time.sleep(0.5)
 
@@ -628,14 +631,14 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
     # 出牌拖拽（大于6回合时从中心向两侧）
     start_y = 672 + random.randint(-2, 2)
     end_y = 400 + random.randint(-2, 2)
-    duration = 0.05
+    duration = 0.03
     if round_count >= 6:
         drag_points_x = [600, 700, 684, 551, 830, 501, 900, 405, 959]
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
 
     for x in drag_points_x:
-        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, 6)
+        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, 3)
         time.sleep(0.05)
     time.sleep(0.5)
 
