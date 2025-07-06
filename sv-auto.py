@@ -39,8 +39,7 @@ DEFAULT_CONFIG = {
     "emulator_port": 16384,
     "scan_interval": 2,
     "evolution_threshold": 0.85,
-    "extra_templates_dir": "extra_templates",
-    "extra_drag_delay": 0.01
+    "extra_templates_dir": "extra_templates"
 }
 
 def load_config():
@@ -262,7 +261,7 @@ def load_round_statistics():
     except Exception as e:
         logger.error(f"加载统计数据失败: {str(e)}")
 
-def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, extra_delay, steps=3):
+def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=8):
     """
     模拟曲线拖拽操作
     :param u2_device: 设备对象
@@ -274,7 +273,6 @@ def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, extra_delay
     :param steps: 拖拽路径中的步骤数
     """
     u2_device.touch.down(start_x, start_y)
-    time.sleep(extra_delay)
 
     for i in range(1, steps + 1):
         t = i / steps
@@ -285,8 +283,6 @@ def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, extra_delay
         u2_device.touch.move(int(xi), int(yi))
         time.sleep(duration / steps)
 
-    u2_device.touch.move(end_x, end_y)
-    time.sleep(extra_delay)
     u2_device.touch.up(end_x, end_y)
 
 def load_evolution_template():
@@ -341,7 +337,7 @@ def detect_super_evolution_button(gray_screenshot):
     max_loc, max_val = match_template(gray_screenshot, evolution_info)
     return max_loc, max_val
 
-def perform_follower_attacks(u2_device, screenshot, base_colors, config):
+def perform_follower_attacks(u2_device, screenshot, base_colors):
     """检测并执行随从攻击（优先攻击护盾目标）（从右往左尝试攻击）"""
     # 对面主人位置（默认攻击目标）
     default_target = (646, 64)
@@ -393,7 +389,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors, config):
                 # 确保坐标是整数
                 target_x = int(target_x)
                 target_y = int(target_y)
-                curved_drag(u2_device, x, y, target_x, target_y, 0.03, config["extra_drag_delay"], 3)
+                curved_drag(u2_device, x, y, target_x, target_y, 0.05, 3)
                 time.sleep(attackDelay)
     else:
         # 后备方案：执行简易坐标
@@ -420,7 +416,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors, config):
             # 确保坐标是整数
             target_x = int(target_x)
             target_y = int(target_y)
-            curved_drag(u2_device, x, y, target_x, target_y, 0.03, config["extra_drag_delay"], 3)
+            curved_drag(u2_device, x, y, target_x, target_y, 0.05, 3)
             time.sleep(attackDelay)
 
     # 避免攻击被卡掉
@@ -509,6 +505,7 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
                 if template_info:
                     center_x = max_loc[0] + template_info['w'] // 2
                     center_y = max_loc[1] + template_info['h'] // 2
+                    time.sleep(0.5)
                     u2_device.click(center_x, center_y)
                     logger.info(f"检测到超进化按钮并点击 ")
                     evolution_detected = True
@@ -520,6 +517,7 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
                 if template_info:
                     center_x = max_loc1[0] + template_info['w'] // 2
                     center_y = max_loc1[1] + template_info['h'] // 2
+                    time.sleep(0.5)
                     u2_device.click(center_x, center_y)
                     logger.info(f"检测到进化按钮并点击 ")
                     evolution_detected = True
@@ -584,7 +582,7 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
 
     return evolution_detected
 
-def perform_full_actions(u2_device, round_count, base_colors, config):
+def perform_full_actions(u2_device, round_count, base_colors):
     """720P分辨率下的出牌攻击操作"""
     # 不管是不是后手先点能量点的位置再说
     u2_device.click(1173, 500)
@@ -597,13 +595,13 @@ def perform_full_actions(u2_device, round_count, base_colors, config):
     # 出牌拖拽（大于6回合时从中心向两侧）
     start_y = 672 + random.randint(-2, 2)
     end_y = 400 + random.randint(-2, 2)
-    duration = 0.03
+    duration = 0.05
     if round_count >= 6:
         drag_points_x = [600, 700, 684, 551, 830, 501, 900, 405, 959]
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
     for x in drag_points_x:
-        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, config["extra_drag_delay"], 3)
+        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, 6)
         time.sleep(0.05)
     time.sleep(0.5)
 
@@ -614,13 +612,12 @@ def perform_full_actions(u2_device, round_count, base_colors, config):
             u2_device,
             screenshot,
             base_colors,
-            config,
         )
     else:
         logger.error("无法获取截图，跳过攻击操作")
     time.sleep(0.1)
 
-def perform_fullPlus_actions(u2_device, round_count, base_colors, config):
+def perform_fullPlus_actions(u2_device, round_count, base_colors):
     """720P分辨率下执行进化/超进化与攻击操作"""
     # 不管是不是后手先点能力点的位置再说
     u2_device.click(1173, 500)
@@ -633,14 +630,14 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors, config):
     # 出牌拖拽（大于6回合时从中心向两侧）
     start_y = 672 + random.randint(-2, 2)
     end_y = 400 + random.randint(-2, 2)
-    duration = 0.03
+    duration = 0.05
     if round_count >= 6:
         drag_points_x = [600, 700, 684, 551, 830, 501, 900, 405, 959]
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
 
     for x in drag_points_x:
-        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, config["extra_drag_delay"], 3)
+        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, 6)
         time.sleep(0.05)
     time.sleep(0.5)
 
@@ -668,7 +665,6 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors, config):
             u2_device,
             screenshot,
             base_colors,
-            config,
         )
     else:
         logger.error("无法获取截图，遍历攻击操作")
@@ -808,6 +804,11 @@ class ScriptThread(QThread):
             # 加载配置
             EMULATOR_PORT = self.config["emulator_port"]
             SCAN_INTERVAL = self.config["scan_interval"]
+            
+            # 新增：活动监控变量
+            last_activity_time = time.time()  # 记录最后一次有效操作时间
+            INACTIVITY_TIMEOUT = 300  # 5分钟无操作超时（300秒）
+            app_package = self.config.get("app_package", "jp.co.cygames.ShadowverseWorldsBeyond")  # 游戏包名，需要在配置中添加
 
             # 初始化设备对象
             device = None
@@ -951,6 +952,42 @@ class ScriptThread(QThread):
                 self.status_signal.emit("连接失败")
                 return
 
+            # 新增：重启应用的函数
+            def restart_app():
+                """重启游戏应用"""
+                try:
+                    self.log_signal.emit("检测到5分钟无活动，正在重启应用防止卡死...")
+                    
+                    # 强制停止应用
+                    self.adb_device.shell(f"am force-stop {app_package}")
+                    time.sleep(2)
+                    
+                    # 重新启动应用
+                    self.adb_device.shell(f"monkey -p {app_package} -c android.intent.category.LAUNCHER 1")
+                    time.sleep(5)  # 等待应用启动
+                    
+                    self.log_signal.emit("应用重启完成")
+                    return True
+                except Exception as e:
+                    self.log_signal.emit(f"重启应用失败: {str(e)}")
+                    return False
+
+            # 新增：重置活动计时器的函数
+            def reset_activity_timer():
+                """重置活动计时器"""
+                nonlocal last_activity_time
+                last_activity_time = time.time()
+
+            # 新增：检查是否需要重启应用
+            def check_inactivity():
+                """检查是否超过无活动时间限制"""
+                current_time = time.time()
+                inactive_duration = current_time - last_activity_time
+                
+                if inactive_duration >= INACTIVITY_TIMEOUT:
+                    return True
+                return False
+
             # 3. 检测脚本启动时是否已经在对战中
             self.log_signal.emit("检测当前游戏状态...")
             init_screenshot = take_screenshot()
@@ -972,6 +1009,7 @@ class ScriptThread(QThread):
                         in_match = True
                         match_start_time = time.time()
                         current_round_count = 2
+                        reset_activity_timer()  # 重置活动计时器
                         self.log_signal.emit("脚本启动时检测到已处于我方回合，自动设置回合数为2")
 
                 # 检测敌方回合
@@ -981,6 +1019,7 @@ class ScriptThread(QThread):
                         in_match = True
                         match_start_time = time.time()
                         current_round_count = 2
+                        reset_activity_timer()  # 重置活动计时器
                         self.log_signal.emit("脚本启动时检测到已处于敌方回合，自动设置回合数为2")
 
                 # 检测换牌开场
@@ -990,6 +1029,7 @@ class ScriptThread(QThread):
                         in_match = True
                         match_start_time = time.time()
                         current_round_count = 1
+                        reset_activity_timer()  # 重置活动计时器
                         self.log_signal.emit("脚本启动时检测到已处于换牌阶段，自动设置回合数为1")
             else:
                 self.log_signal.emit("无法获取初始截图，跳过状态检测")
@@ -1005,17 +1045,18 @@ class ScriptThread(QThread):
             red_start = "<font color='red'>"
             red_end = "</font>"
             message = f"""
-{red_start}
-【提示】本脚本为免费开源项目，您无需付费即可获取。
-若您通过付费渠道购买，可能已遭遇误导。
-免费版本请加群: 967632615
-警惕倒卖行为！
-{red_end}
-"""
+    {red_start}
+    【提示】本脚本为免费开源项目，您无需付费即可获取。
+    若您通过付费渠道购买，可能已遭遇误导。
+    免费版本请加群: 967632615
+    警惕倒卖行为！
+    {red_end}
+    """
             self.log_signal.emit(message.strip())
 
             needLogPause = True
             needAddRoundCount = True
+            
             while self.running:
                 start_time = time.time()
 
@@ -1025,9 +1066,25 @@ class ScriptThread(QThread):
                         # 记录暂停信息
                         self.log_signal.emit("脚本暂停中...")
                         needLogPause = False
-                    # 在暂停状态下每1秒检查一次
+                    # 在暂停状态下每1秒检查一次，并重置活动计时器
+                    reset_activity_timer()
                     time.sleep(1)
                     continue
+
+                # 新增：检查无活动超时
+                if check_inactivity():
+                    if restart_app():
+                        reset_activity_timer()
+                        # 重启后等待一段时间让应用完全加载
+                        time.sleep(10)
+                        # 重置相关状态
+                        in_match = False
+                        last_detected_button = None
+                        base_colors = None
+                        continue
+                    else:
+                        # 如果重启失败，继续运行但重置计时器避免频繁重启
+                        reset_activity_timer()
 
                 # 获取截图
                 needLogPause = True
@@ -1062,6 +1119,7 @@ class ScriptThread(QThread):
                             #点击固定位置跳过
                             self.log_signal.emit("检测到每日卡包，尝试跳过")
                             self.u2_device.click(717, 80)
+                            reset_activity_timer()  # 重置活动计时器
 
                         # 处理对战开始/结束逻辑
                         if key == 'war':
@@ -1074,6 +1132,7 @@ class ScriptThread(QThread):
                             base_colors = None  # 重置开局基准背景色
                             self.start_new_match()
                             in_match = True
+                            reset_activity_timer()  # 重置活动计时器
                             self.log_signal.emit("检测到新对战开始")
 
                         if key == 'enemy_round':
@@ -1082,6 +1141,7 @@ class ScriptThread(QThread):
                                 self.log_signal.emit("检测到敌方回合")
                                 needAddRoundCount = True
                                 last_detected_button = key
+                                reset_activity_timer()  # 重置活动计时器
                             time.sleep(1)
                             continue
 
@@ -1102,6 +1162,7 @@ class ScriptThread(QThread):
                             if self_shield_targets:
                                 # 暂停脚本并通知用户
                                 self.paused = True
+                                reset_activity_timer()  # 重置活动计时器
                                 self.log_signal.emit(f"检测到己方护盾目标！脚本已暂停")
 
                                 # 获取最高置信度的目标
@@ -1119,7 +1180,8 @@ class ScriptThread(QThread):
 
                             if current_round_count in (4, 5, 6, 7, 8):  # 第4 ，5，6 ,7,8回合
                                 self.log_signal.emit(f"第{current_round_count}回合，执行进化/超进化")
-                                perform_fullPlus_actions(self.u2_device, current_round_count, base_colors, self.config)
+                                perform_fullPlus_actions(self.u2_device, current_round_count, base_colors)
+                                reset_activity_timer()  # 重置活动计时器
                             elif current_round_count > 12:   #12回合以上弃权防止烧绳
                                 self.log_signal.emit(f"12回合以上，直接弃权")
                                 time.sleep(0.5)
@@ -1129,9 +1191,11 @@ class ScriptThread(QThread):
                                 time.sleep(0.5)
                                 self.u2_device.click(773, 560)
                                 time.sleep(1)
+                                reset_activity_timer()  # 重置活动计时器
                             else:
                                 self.log_signal.emit(f"第{current_round_count}回合，执行正常操作")
-                                perform_full_actions(self.u2_device, current_round_count, base_colors, self.config)
+                                perform_full_actions(self.u2_device, current_round_count, base_colors)
+                                reset_activity_timer()  # 重置活动计时器
 
                             if needAddRoundCount:
                                 current_round_count += 1
@@ -1142,6 +1206,7 @@ class ScriptThread(QThread):
                         center_y = max_loc[1] + template_info['h'] // 2
                         self.u2_device.click(center_x + random.randint(-2, 2), center_y + random.randint(-2, 2))
                         button_detected = True
+                        reset_activity_timer()  # 每次点击操作后重置活动计时器
 
                         if key != last_detected_button:
                             self.log_signal.emit(f"检测到按钮并点击: {template_info['name']} ")
@@ -1149,6 +1214,12 @@ class ScriptThread(QThread):
                         last_detected_button = key
                         time.sleep(0.5)
                         break
+
+                # 如果没有检测到任何按钮，但截图成功，也算作一种活动（证明游戏还在响应）
+                if not button_detected:
+                    # 可以选择性地更新活动时间，但频率不要太高
+                    # 这里我们选择不更新，让无操作计时器继续计时
+                    pass
 
                 # 更新统计信息
                 stats = {
@@ -1185,9 +1256,9 @@ class ScriptThread(QThread):
         except Exception as e:
             error_msg = f"脚本运行出错: {str(e)}"
             logger.error(error_msg)
-            self.status_signal.emit("已停止")
             self.error_signal.emit(f"{str(e)}")
             return
+
 
     def start_new_match(self):
         """开始新的对战"""
@@ -1399,7 +1470,7 @@ class ShadowverseAutomationUI(QMainWindow):
         # ADB 连接部分
         adb_layout = QHBoxLayout()
         adb_label = QLabel("ADB 端口:")
-        self.adb_input = QLineEdit(f"127.0.0.1:{self.config["emulator_port"]}")
+        self.adb_input = QLineEdit(f"127.0.0.1:{self.config['emulator_port']}")
         self.start_btn = QPushButton("开始")
         self.start_btn.clicked.connect(self.start_script)
 
