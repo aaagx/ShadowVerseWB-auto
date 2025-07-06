@@ -10,3 +10,4 @@ github项目地址：https://github.com/StarWishLXH/ShadowVerseWB-auto
 9、如果模拟器第一次打开游戏卡在设备优化界面，在模拟器设置中配置使用DirectX而非Vulkan
 10、使用前需要在游戏设置中关闭回合结束提示
 11、自己不要带盾，检测到己方带盾会自动暂停脚本
+12、如果遇到操作漏刀的情况，可以尝试调高配置文件中的 extra_drag_delay（单位是秒，建议0.01-0.1之间）

@@ -39,7 +39,8 @@ DEFAULT_CONFIG = {
     "emulator_port": 16384,
     "scan_interval": 2,
     "evolution_threshold": 0.85,
-    "extra_templates_dir": "extra_templates"
+    "extra_templates_dir": "extra_templates",
+    "extra_drag_delay": 0.01
 }
 
 def load_config():
@@ -261,7 +262,7 @@ def load_round_statistics():
     except Exception as e:
         logger.error(f"加载统计数据失败: {str(e)}")
 
-def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=3):
+def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, extra_delay, steps=3):
     """
     模拟曲线拖拽操作
     :param u2_device: 设备对象
@@ -273,7 +274,7 @@ def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=3):
     :param steps: 拖拽路径中的步骤数
     """
     u2_device.touch.down(start_x, start_y)
-    time.sleep(0.025)
+    time.sleep(extra_delay)
 
     for i in range(1, steps + 1):
         t = i / steps
@@ -285,7 +286,7 @@ def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, steps=3):
         time.sleep(duration / steps)
 
     u2_device.touch.move(end_x, end_y)
-    time.sleep(0.025)
+    time.sleep(extra_delay)
     u2_device.touch.up(end_x, end_y)
 
 def load_evolution_template():
@@ -340,7 +341,7 @@ def detect_super_evolution_button(gray_screenshot):
     max_loc, max_val = match_template(gray_screenshot, evolution_info)
     return max_loc, max_val
 
-def perform_follower_attacks(u2_device, screenshot, base_colors):
+def perform_follower_attacks(u2_device, screenshot, base_colors, config):
     """检测并执行随从攻击（优先攻击护盾目标）（从右往左尝试攻击）"""
     # 对面主人位置（默认攻击目标）
     default_target = (646, 64)
@@ -392,7 +393,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
                 # 确保坐标是整数
                 target_x = int(target_x)
                 target_y = int(target_y)
-                curved_drag(u2_device, x, y, target_x, target_y, 0.03, 3)
+                curved_drag(u2_device, x, y, target_x, target_y, 0.03, config["extra_drag_delay"], 3)
                 time.sleep(attackDelay)
     else:
         # 后备方案：执行简易坐标
@@ -419,7 +420,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors):
             # 确保坐标是整数
             target_x = int(target_x)
             target_y = int(target_y)
-            curved_drag(u2_device, x, y, target_x, target_y, 0.03, 3)
+            curved_drag(u2_device, x, y, target_x, target_y, 0.03, config["extra_drag_delay"], 3)
             time.sleep(attackDelay)
 
     # 避免攻击被卡掉
@@ -583,7 +584,7 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
 
     return evolution_detected
 
-def perform_full_actions(u2_device, round_count, base_colors):
+def perform_full_actions(u2_device, round_count, base_colors, config):
     """720P分辨率下的出牌攻击操作"""
     # 不管是不是后手先点能量点的位置再说
     u2_device.click(1173, 500)
@@ -602,7 +603,7 @@ def perform_full_actions(u2_device, round_count, base_colors):
     else:
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
     for x in drag_points_x:
-        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, 3)
+        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, config["extra_drag_delay"], 3)
         time.sleep(0.05)
     time.sleep(0.5)
 
@@ -613,12 +614,13 @@ def perform_full_actions(u2_device, round_count, base_colors):
             u2_device,
             screenshot,
             base_colors,
+            config,
         )
     else:
         logger.error("无法获取截图，跳过攻击操作")
     time.sleep(0.1)
 
-def perform_fullPlus_actions(u2_device, round_count, base_colors):
+def perform_fullPlus_actions(u2_device, round_count, base_colors, config):
     """720P分辨率下执行进化/超进化与攻击操作"""
     # 不管是不是后手先点能力点的位置再说
     u2_device.click(1173, 500)
@@ -638,7 +640,7 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
         drag_points_x = [405, 501, 551, 600, 684, 700, 830, 900, 959]
 
     for x in drag_points_x:
-        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, 3)
+        curved_drag(u2_device, x + random.randint(-2, 2), start_y, x + random.randint(-2, 2), end_y, duration, config["extra_drag_delay"], 3)
         time.sleep(0.05)
     time.sleep(0.5)
 
@@ -666,6 +668,7 @@ def perform_fullPlus_actions(u2_device, round_count, base_colors):
             u2_device,
             screenshot,
             base_colors,
+            config,
         )
     else:
         logger.error("无法获取截图，遍历攻击操作")
@@ -1116,7 +1119,7 @@ class ScriptThread(QThread):
 
                             if current_round_count in (4, 5, 6, 7, 8):  # 第4 ，5，6 ,7,8回合
                                 self.log_signal.emit(f"第{current_round_count}回合，执行进化/超进化")
-                                perform_fullPlus_actions(self.u2_device, current_round_count, base_colors)
+                                perform_fullPlus_actions(self.u2_device, current_round_count, base_colors, self.config)
                             elif current_round_count > 12:   #12回合以上弃权防止烧绳
                                 self.log_signal.emit(f"12回合以上，直接弃权")
                                 time.sleep(0.5)
@@ -1128,7 +1131,7 @@ class ScriptThread(QThread):
                                 time.sleep(1)
                             else:
                                 self.log_signal.emit(f"第{current_round_count}回合，执行正常操作")
-                                perform_full_actions(self.u2_device, current_round_count, base_colors)
+                                perform_full_actions(self.u2_device, current_round_count, base_colors, self.config)
 
                             if needAddRoundCount:
                                 current_round_count += 1
@@ -1182,6 +1185,7 @@ class ScriptThread(QThread):
         except Exception as e:
             error_msg = f"脚本运行出错: {str(e)}"
             logger.error(error_msg)
+            self.status_signal.emit("已停止")
             self.error_signal.emit(f"{str(e)}")
             return
 
