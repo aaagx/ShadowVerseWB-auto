@@ -3,5 +3,6 @@
   "scan_interval": 2,
   "evolution_threshold": 0.85,
   "extra_templates_dir": "extra_templates",
-  "extra_drag_delay": 0.01
+  "extra_drag_delay": 0.01,
+  "app_package": "jp.co.cygames.ShadowverseWorldsBeyond"
 }
