@@ -808,6 +808,11 @@ class ScriptThread(QThread):
             # 加载配置
             EMULATOR_PORT = self.config["emulator_port"]
             SCAN_INTERVAL = self.config["scan_interval"]
+            
+            # 新增：活动监控变量
+            last_activity_time = time.time()  # 记录最后一次有效操作时间
+            INACTIVITY_TIMEOUT = 300  # 5分钟无操作超时（300秒）
+            app_package = self.config.get("app_package", "jp.co.cygames.ShadowverseWorldsBeyond")  # 游戏包名，需要在配置中添加
 
             # 初始化设备对象
             device = None
@@ -951,6 +956,42 @@ class ScriptThread(QThread):
                 self.status_signal.emit("连接失败")
                 return
 
+            # 新增：重启应用的函数
+            def restart_app():
+                """重启游戏应用"""
+                try:
+                    self.log_signal.emit("检测到5分钟无活动，正在重启应用防止卡死...")
+                    
+                    # 强制停止应用
+                    self.adb_device.shell(f"am force-stop {app_package}")
+                    time.sleep(2)
+                    
+                    # 重新启动应用
+                    self.adb_device.shell(f"monkey -p {app_package} -c android.intent.category.LAUNCHER 1")
+                    time.sleep(5)  # 等待应用启动
+                    
+                    self.log_signal.emit("应用重启完成")
+                    return True
+                except Exception as e:
+                    self.log_signal.emit(f"重启应用失败: {str(e)}")
+                    return False
+
+            # 新增：重置活动计时器的函数
+            def reset_activity_timer():
+                """重置活动计时器"""
+                nonlocal last_activity_time
+                last_activity_time = time.time()
+
+            # 新增：检查是否需要重启应用
+            def check_inactivity():
+                """检查是否超过无活动时间限制"""
+                current_time = time.time()
+                inactive_duration = current_time - last_activity_time
+                
+                if inactive_duration >= INACTIVITY_TIMEOUT:
+                    return True
+                return False
+
             # 3. 检测脚本启动时是否已经在对战中
             self.log_signal.emit("检测当前游戏状态...")
             init_screenshot = take_screenshot()
@@ -972,6 +1013,7 @@ class ScriptThread(QThread):
                         in_match = True
                         match_start_time = time.time()
                         current_round_count = 2
+                        reset_activity_timer()  # 重置活动计时器
                         self.log_signal.emit("脚本启动时检测到已处于我方回合，自动设置回合数为2")
 
                 # 检测敌方回合
@@ -981,6 +1023,7 @@ class ScriptThread(QThread):
                         in_match = True
                         match_start_time = time.time()
                         current_round_count = 2
+                        reset_activity_timer()  # 重置活动计时器
                         self.log_signal.emit("脚本启动时检测到已处于敌方回合，自动设置回合数为2")
 
                 # 检测换牌开场
@@ -990,6 +1033,7 @@ class ScriptThread(QThread):
                         in_match = True
                         match_start_time = time.time()
                         current_round_count = 1
+                        reset_activity_timer()  # 重置活动计时器
                         self.log_signal.emit("脚本启动时检测到已处于换牌阶段，自动设置回合数为1")
             else:
                 self.log_signal.emit("无法获取初始截图，跳过状态检测")
@@ -1016,6 +1060,7 @@ class ScriptThread(QThread):
 
             needLogPause = True
             needAddRoundCount = True
+            
             while self.running:
                 start_time = time.time()
 
@@ -1025,9 +1070,25 @@ class ScriptThread(QThread):
                         # 记录暂停信息
                         self.log_signal.emit("脚本暂停中...")
                         needLogPause = False
-                    # 在暂停状态下每1秒检查一次
+                    # 在暂停状态下每1秒检查一次，并重置活动计时器
+                    reset_activity_timer()
                     time.sleep(1)
                     continue
+
+                # 新增：检查无活动超时
+                if check_inactivity():
+                    if restart_app():
+                        reset_activity_timer()
+                        # 重启后等待一段时间让应用完全加载
+                        time.sleep(10)
+                        # 重置相关状态
+                        in_match = False
+                        last_detected_button = None
+                        base_colors = None
+                        continue
+                    else:
+                        # 如果重启失败，继续运行但重置计时器避免频繁重启
+                        reset_activity_timer()
 
                 # 获取截图
                 needLogPause = True
@@ -1062,6 +1123,7 @@ class ScriptThread(QThread):
                             #点击固定位置跳过
                             self.log_signal.emit("检测到每日卡包，尝试跳过")
                             self.u2_device.click(717, 80)
+                            reset_activity_timer()  # 重置活动计时器
 
                         # 处理对战开始/结束逻辑
                         if key == 'war':
@@ -1074,6 +1136,7 @@ class ScriptThread(QThread):
                             base_colors = None  # 重置开局基准背景色
                             self.start_new_match()
                             in_match = True
+                            reset_activity_timer()  # 重置活动计时器
                             self.log_signal.emit("检测到新对战开始")
 
                         if key == 'enemy_round':
@@ -1082,6 +1145,7 @@ class ScriptThread(QThread):
                                 self.log_signal.emit("检测到敌方回合")
                                 needAddRoundCount = True
                                 last_detected_button = key
+                                reset_activity_timer()  # 重置活动计时器
                             time.sleep(1)
                             continue
 
@@ -1102,6 +1166,7 @@ class ScriptThread(QThread):
                             if self_shield_targets:
                                 # 暂停脚本并通知用户
                                 self.paused = True
+                                reset_activity_timer()  # 重置活动计时器
                                 self.log_signal.emit(f"检测到己方护盾目标！脚本已暂停")
 
                                 # 获取最高置信度的目标
@@ -1120,6 +1185,7 @@ class ScriptThread(QThread):
                             if current_round_count in (4, 5, 6, 7, 8):  # 第4 ，5，6 ,7,8回合
                                 self.log_signal.emit(f"第{current_round_count}回合，执行进化/超进化")
                                 perform_fullPlus_actions(self.u2_device, current_round_count, base_colors, self.config)
+                                reset_activity_timer()  # 重置活动计时器
                             elif current_round_count > 12:   #12回合以上弃权防止烧绳
                                 self.log_signal.emit(f"12回合以上，直接弃权")
                                 time.sleep(0.5)
@@ -1129,9 +1195,11 @@ class ScriptThread(QThread):
                                 time.sleep(0.5)
                                 self.u2_device.click(773, 560)
                                 time.sleep(1)
+                                reset_activity_timer()  # 重置活动计时器
                             else:
                                 self.log_signal.emit(f"第{current_round_count}回合，执行正常操作")
                                 perform_full_actions(self.u2_device, current_round_count, base_colors, self.config)
+                                reset_activity_timer()  # 重置活动计时器
 
                             if needAddRoundCount:
                                 current_round_count += 1
@@ -1142,6 +1210,7 @@ class ScriptThread(QThread):
                         center_y = max_loc[1] + template_info['h'] // 2
                         self.u2_device.click(center_x + random.randint(-2, 2), center_y + random.randint(-2, 2))
                         button_detected = True
+                        reset_activity_timer()  # 每次点击操作后重置活动计时器
 
                         if key != last_detected_button:
                             self.log_signal.emit(f"检测到按钮并点击: {template_info['name']} ")
@@ -1149,6 +1218,12 @@ class ScriptThread(QThread):
                         last_detected_button = key
                         time.sleep(0.5)
                         break
+
+                # 如果没有检测到任何按钮，但截图成功，也算作一种活动（证明游戏还在响应）
+                if not button_detected:
+                    # 可以选择性地更新活动时间，但频率不要太高
+                    # 这里我们选择不更新，让无操作计时器继续计时
+                    pass
 
                 # 更新统计信息
                 stats = {
