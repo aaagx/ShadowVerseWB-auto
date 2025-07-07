@@ -1592,6 +1592,12 @@ class ShadowverseAutomationUI(QMainWindow):
             self.move(event.globalPos() - self.drag_position)
             event.accept()
 
+    def closeEvent(self, event):
+        if self.script_thread:
+            self.script_thread.stop()
+            self.script_thread.wait()
+        event.accept()
+
 if __name__ == "__main__":
     try:
         app = QApplication(sys.argv)
