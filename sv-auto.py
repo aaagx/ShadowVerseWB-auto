@@ -101,6 +101,7 @@ notification_queue = queue.Queue()
 
 # 模板目录
 TEMPLATES_DIR = "templates"
+TEMPLATES_DIR_COST = "templates_cost"
 
 # 进化按钮模板（全局）
 evolution_template = None
@@ -861,6 +862,12 @@ class ScriptThread(QThread):
                 'rank': create_template_info(load_template(TEMPLATES_DIR, 'rank.png'), "阶级积分"),
             }
 
+            self.templates_cost = {
+                'cost_1': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_1.png'), "费用1"),
+                'cost_2': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_2.png'), "费用2"),
+                'cost_3': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_3.png'), "费用3"),
+            }
+
             extra_dir = self.config.get("extra_templates_dir", "")
             if extra_dir and os.path.isdir(extra_dir):
                 self.log_signal.emit(f"开始加载额外模板目录: {extra_dir}")
@@ -955,6 +962,94 @@ class ScriptThread(QThread):
                 self.log_signal.emit(f"设备连接失败: {str(e)}")
                 self.status_signal.emit("连接失败")
                 return
+
+            # 新增：换牌功能函数
+            def perform_card_replacement():
+                """执行换牌操作：检测手牌费用并替换大于3费的牌"""
+                try:
+                    self.log_signal.emit("开始执行换牌检测...")
+                    time.sleep(1)
+
+                    # 重新截图用于费用检测
+                    card_screenshot = take_screenshot()
+                    if card_screenshot is None:
+                        self.log_signal.emit("无法获取换牌截图")
+                        return
+
+                    # 转换为OpenCV格式
+                    card_screenshot_np = np.array(card_screenshot)
+                    card_screenshot_cv = cv2.cvtColor(card_screenshot_np, cv2.COLOR_RGB2BGR)
+                    gray_card_screenshot = cv2.cvtColor(card_screenshot_cv, cv2.COLOR_BGR2GRAY)
+
+                    # 定义四张手牌的费用检测区域
+                    hand_card_regions = [
+                        (177, 408, 214, 447),  # 第1张牌的费用区域，x1, y1, x2, y2
+                        (382, 411, 421, 453),  # 第2张牌的费用区域
+                        (590, 411, 624, 450),  # 第3张牌的费用区域
+                        (797, 411, 831, 450),  # 第4张牌的费用区域
+                    ]
+
+                    # 定义手牌中心位置（用于向上滑动）
+                    hand_card_centers = [
+                        (274, 518), (477, 527), (681, 521), (884, 524)
+                    ]
+
+                    cards_to_replace = []
+
+                    # 检测每张手牌的费用
+                    for i, region in enumerate(hand_card_regions):
+                        x1, y1, x2, y2 = region
+                        card_region = gray_card_screenshot[y1:y2, x1:x2]
+
+                        # 调试：保存调试图片（可选）
+                        # cv2.imwrite(f"debug_card_{i+1}_region.jpg", card_region)
+
+                        # 图像预处理
+                        card_region_enhanced = cv2.equalizeHist(card_region)
+                        
+                        is_low_cost = False  # 默认为高费用
+
+                        # 只检测1、2、3费，如果都不匹配就认为是高费用
+                        low_costs = ['cost_1', 'cost_2', 'cost_3']
+
+                        for cost_type in low_costs:
+                            if cost_type in self.templates_cost and self.templates_cost[cost_type]:
+                                # 对原始和增强图像都进行匹配
+                                max_loc1, max_val1 = match_template(card_region, self.templates_cost[cost_type])
+                                max_loc2, max_val2 = match_template(card_region_enhanced, self.templates_cost[cost_type])
+
+                                max_val = max(max_val1, max_val2)
+                                threshold = self.templates_cost[cost_type]['threshold']
+
+                                self.log_signal.emit(f"第{i+1}张牌检测{cost_type}: 匹配度{max_val:.3f}, 阈值{threshold:.3f}")
+
+                                if max_val >= threshold:
+                                    cost_name = cost_type.replace('cost_', '')
+                                    self.log_signal.emit(f"第{i+1}张牌确认为{cost_name}费，保留")
+                                    is_low_cost = True
+                                    break  # 找到匹配就退出循环
+
+                        # 如果不是1、2、3费中的任何一种，就标记为需要替换
+                        if not is_low_cost:
+                            cards_to_replace.append(i)
+                            self.log_signal.emit(f"第{i+1}张牌费用大于3费，标记为替换")
+
+                    # 执行换牌操作
+                    if cards_to_replace:
+                        self.log_signal.emit(f"需要替换的手牌: {[i+1 for i in cards_to_replace]}")
+                        for card_index in cards_to_replace:
+                            center_x, center_y = hand_card_centers[card_index]
+                            # 向上滑动替换手牌
+                            self.u2_device.swipe(center_x, center_y, center_x, center_y - 300, duration=0.3)
+                            self.log_signal.emit(f"已替换第{card_index+1}张牌")
+                            time.sleep(0.5)  # 每次操作间隔
+                    else:
+                        self.log_signal.emit("所有手牌费用都在3费以内，无需替换")
+
+                    time.sleep(1)
+
+                except Exception as e:
+                    self.log_signal.emit(f"换牌操作出错: {str(e)}")
 
             # 新增：重启应用的函数
             def restart_app():
@@ -1114,6 +1209,20 @@ class ScriptThread(QThread):
                             reset_activity_timer()  # 重置活动计时器
                             if key == 'end_round' and in_match:
                                 self.log_signal.emit(f"已发现'结束回合'按钮 (当前回合: {current_round_count})")
+
+                        if key == 'decision':
+                            self.log_signal.emit("检测到换牌界面，开始执行换牌逻辑")
+                            # 执行换牌操作
+                            perform_card_replacement()
+                            # 换牌完成后点击决定按钮
+                            center_x = max_loc[0] + template_info['w'] // 2
+                            center_y = max_loc[1] + template_info['h'] // 2
+                            self.u2_device.click(center_x + random.randint(-2, 2), center_y + random.randint(-2, 2))
+                            self.log_signal.emit("换牌完成，点击决定按钮")
+                            last_detected_button = key
+                            button_detected = True
+                            time.sleep(1)
+                            break
 
                         # 处理每日卡包
                         if key == 'dailyCard':
