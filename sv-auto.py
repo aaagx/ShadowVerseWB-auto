@@ -783,7 +783,6 @@ class ScriptThread(QThread):
         self.adb_port = config["emulator_port"]
         self.scan_interval = config["scan_interval"]
         # 从配置中获取换牌策略
-        self.card_replacement_enabled = config.get("card_replacement", {}).get("enabled", False)
         self.card_replacement_strategy = config.get("card_replacement", {}).get("strategy", "3费档次")
         # 初始化设备对象
         self.u2_device = None
@@ -802,7 +801,7 @@ class ScriptThread(QThread):
     def perform_card_replacement(self, strategy='3费档次'):
         """
         执行换牌操作：根据选择的策略检测手牌并替换不符合条件的牌
-        
+
         Args:
             strategy: 换牌策略 ('3费档次', '4费档次', '5费档次')
         """
@@ -841,14 +840,14 @@ class ScriptThread(QThread):
                 card_region = gray_card_screenshot[y1:y2, x1:x2]
 
                 # 调试：保存调试图片（可选）
-                cv2.imwrite(f"debug_card_{i+1}_region.jpg", card_region)
+                # cv2.imwrite(f"debug_card_{i+1}_region.jpg", card_region)
 
                 # 图像预处理
                 card_region_enhanced = cv2.equalizeHist(card_region)
-                
+
                 detected_cost = None
                 max_confidence = 0
-                
+
                 # 检测费用（1-5费）
                 for cost in range(1, 6):
                     cost_type = f'cost_{cost}'
@@ -856,28 +855,28 @@ class ScriptThread(QThread):
                         # 对原始和增强图像都进行匹配
                         max_loc1, max_val1 = match_template(card_region, self.templates_cost[cost_type])
                         max_loc2, max_val2 = match_template(card_region_enhanced, self.templates_cost[cost_type])
-                        
+
                         max_val = max(max_val1, max_val2)
                         threshold = self.templates_cost[cost_type]['threshold']
-                        
+
                         self.log_signal.emit(f"第{i+1}张牌检测{cost}费: 匹配度{max_val:.3f}, 阈值{threshold:.3f}")
-                        
+
                         if max_val >= threshold and max_val > max_confidence:
                             max_confidence = max_val
                             detected_cost = cost
-                
+
                 # 如果没有检测到1-5费中的任何一种，默认为6费以上
                 if detected_cost is None:
                     detected_cost = 6
                     self.log_signal.emit(f"第{i+1}张牌未识别出具体费用，默认为6费+")
                 else:
                     self.log_signal.emit(f"第{i+1}张牌检测为{detected_cost}费")
-                
+
                 hand_costs.append(detected_cost)
 
             # 根据策略决定是否需要换牌
             cards_to_replace = self._determine_cards_to_replace(hand_costs, strategy)
-            
+
             # 执行换牌操作
             if cards_to_replace:
                 self.log_signal.emit(f"需要替换的手牌: {[i+1 for i in cards_to_replace]}")
@@ -898,16 +897,16 @@ class ScriptThread(QThread):
     def _determine_cards_to_replace(self, hand_costs, strategy):
         """
         根据策略和手牌费用决定哪些牌需要替换
-        
+
         Args:
             hand_costs: 4张手牌的费用列表
             strategy: 换牌策略
-        
+
         Returns:
             需要替换的牌的索引列表
         """
         self.log_signal.emit(f"当前手牌费用: {hand_costs}")
-        
+
         # 根据策略检查，使用向下兼容
         if strategy == '5费档次':
             result = self._check_5_cost_strategy(hand_costs)
@@ -915,17 +914,17 @@ class ScriptThread(QThread):
                 return result
             self.log_signal.emit("5费档次条件不满足，检查4费档次")
             strategy = '4费档次'
-        
+
         if strategy == '4费档次':
             result = self._check_4_cost_strategy(hand_costs)
             if result is not None:
                 return result
             self.log_signal.emit("4费档次条件不满足，检查3费档次")
             strategy = '3费档次'
-        
+
         if strategy == '3费档次':
             return self._check_3_cost_strategy(hand_costs)
-        
+
         return []
 
     def _check_3_cost_strategy(self, hand_costs):
@@ -934,28 +933,28 @@ class ScriptThread(QThread):
         条件：前三张牌组合为[1,2,3]，否则前2张必须有一张是3费牌
         """
         front_three = sorted(hand_costs[:3])
-        
+
         # 检查是否满足[1,2,3]组合
         if front_three == [1, 2, 3]:
             self.log_signal.emit("满足3费档次最优组合[1,2,3]，保留所有牌")
             return []
-        
+
         # 检查前2张是否有3费牌
         front_two = hand_costs[:2]
         if 3 in front_two:
             self.log_signal.emit("前2张牌中有3费牌，符合3费档次要求")
             # 替换大于3费的牌
             return [i for i, cost in enumerate(hand_costs) if cost > 3]
-        
+
         # 不满足条件，需要调整
         self.log_signal.emit("不满足3费档次条件，需要调整手牌")
         cards_to_replace = []
-        
+
         # 如果前2张都不是3费，优先替换非1、2、3费的牌
         for i, cost in enumerate(hand_costs):
             if cost not in [1, 2, 3]:
                 cards_to_replace.append(i)
-        
+
         return cards_to_replace
 
     def _check_4_cost_strategy(self, hand_costs):
@@ -964,19 +963,19 @@ class ScriptThread(QThread):
         条件：组合[1,2,3,4]，否则前三张为[2,3,4]或[2,2,4]
         """
         sorted_hand = sorted(hand_costs)
-        
+
         # 检查是否满足[1,2,3,4]组合
         if sorted_hand == [1, 2, 3, 4]:
             self.log_signal.emit("满足4费档次最优组合[1,2,3,4]，保留所有牌")
             return []
-        
+
         # 检查前三张是否为[2,3,4]或[2,2,4]
         front_three = sorted(hand_costs[:3])
         if front_three == [2, 3, 4] or front_three == [2, 2, 4]:
             self.log_signal.emit(f"前三张牌组合{front_three}符合4费档次要求")
             # 替换大于4费的牌
             return [i for i, cost in enumerate(hand_costs) if cost > 4]
-        
+
         # 不满足4费档次条件
         self.log_signal.emit("不满足4费档次条件")
         return None
@@ -987,7 +986,7 @@ class ScriptThread(QThread):
         优先级：[2,3,4,5] > [2,3,3,5] > [2,2,3,5] > [2,2,2,5]
         """
         sorted_hand = sorted(hand_costs)
-        
+
         # 定义5费档次的优先组合
         preferred_combinations = [
             [2, 3, 4, 5],
@@ -995,12 +994,12 @@ class ScriptThread(QThread):
             [2, 2, 3, 5],
             [2, 2, 2, 5]
         ]
-        
+
         for i, combination in enumerate(preferred_combinations):
             if sorted_hand == combination:
                 self.log_signal.emit(f"满足5费档次组合{combination}（优先级{i+1}），保留所有牌")
                 return []
-        
+
         # 检查是否可以通过替换达到某个组合
         # 这里可以添加更复杂的逻辑来智能替换
         # 暂时返回None表示不满足5费档次
@@ -1885,7 +1884,7 @@ class ShadowverseAutomationUI(QMainWindow):
     def show_strategy_help(self):
         """显示换牌策略说明"""
         from PyQt5.QtWidgets import QMessageBox
-        
+
         help_text = """
     换牌策略说明：
 
@@ -1906,7 +1905,7 @@ class ShadowverseAutomationUI(QMainWindow):
 
     注意：高档次策略条件不满足时会自动检查低档次策略
         """
-        
+
         msg = QMessageBox()
         msg.setWindowTitle("换牌策略说明")
         msg.setText(help_text)
