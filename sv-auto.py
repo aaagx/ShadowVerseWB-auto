@@ -413,7 +413,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors, config):
             if shield_targets:
                 logger.info(f"检测到护盾目标，优先攻击")
                 target_x, target_y = shield_targets[0]
-                attackDelay = 0.6
+                attackDelay = 1.0
             else:
                 need_scan_shield = False
                 logger.info(f"未检测到护盾，直接攻击主战者")
@@ -1463,24 +1463,24 @@ class ScriptThread(QThread):
                                     base_colors.append((color1, color2))
                                 self.log_signal.emit("第1回合，记录基准背景色完成")
 
-                            # self_shield_targets = scan_self_shield_targets()
-                            # if self_shield_targets:
-                            #     # 暂停脚本并通知用户
-                            #     self.paused = True
-                            #     self.log_signal.emit(f"检测到己方护盾目标！脚本已暂停")
+                            self_shield_targets = scan_self_shield_targets()
+                            if self_shield_targets:
+                                # 暂停脚本并通知用户
+                                self.paused = True
+                                self.log_signal.emit(f"检测到己方护盾目标！脚本已暂停")
 
-                            #     # 获取最高置信度的目标
-                            #     best_target = self_shield_targets[0]
-                            #     self.log_signal.emit(
-                            #         f"检测到己方护盾随从！位置: ({best_target['x']}, {best_target['y']}), "
-                            #         f"置信度: {best_target['confidence']:.2f}\n"
-                            #         "脚本已暂停，请手动处理。"
-                            #     )
+                                # 获取最高置信度的目标
+                                best_target = self_shield_targets[0]
+                                self.log_signal.emit(
+                                    f"检测到己方护盾随从！位置: ({best_target['x']}, {best_target['y']}), "
+                                    f"置信度: {best_target['confidence']:.2f}\n"
+                                    "脚本已暂停，请手动处理。"
+                                )
 
-                            #     # 跳过后续操作
-                            #     last_detected_button = key
-                            #     button_detected = True
-                            #     break
+                                # 跳过后续操作
+                                last_detected_button = key
+                                button_detected = True
+                                break
 
                             if current_round_count in (4, 5, 6, 7, 8):  # 第4 ，5，6 ,7,8回合
                                 self.log_signal.emit(f"第{current_round_count}回合，执行进化/超进化")
