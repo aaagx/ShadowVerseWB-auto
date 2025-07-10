@@ -897,79 +897,79 @@ def _check_3_cost_strategy(hand_costs):
         return []
 
     # 统计3费牌数量
-    three_cost_count_3 = hand_costs.count(3)
+    cost_3_count = hand_costs.count(3)
     # 统计2费牌数量
-    three_cost_count_2 = hand_costs.count(2)
+    cost_2_count = hand_costs.count(2)
     # 统计1费牌数量
-    three_cost_count_1 = hand_costs.count(1)
+    cost_1_count = hand_costs.count(1)
 
     # 3费牌位置
-    front_two_three_cost_3 = [i for i, value in enumerate(hand_costs) if value == 3]
+    cost_3_positions = [i for i, value in enumerate(hand_costs) if value == 3]
     # 2费牌位置
-    front_two_three_cost_2 = [i for i, value in enumerate(hand_costs) if value == 2]
+    cost_2_positions = [i for i, value in enumerate(hand_costs) if value == 2]
     # 1费牌位置
-    front_two_three_cost_1 = [i for i, value in enumerate(hand_costs) if value == 1]
+    cost_1_positions = [i for i, value in enumerate(hand_costs) if value == 1]
 
     # 3费牌过多处理
-    if three_cost_count_3 == 4:
+    if cost_3_count == 4:
         # 3费牌=4张：前两张都更换
         logger.info("3费牌过多(4张)，替换前两张牌")
         return [0, 1]
 
-    if three_cost_count_3 == 3:
+    if cost_3_count == 3:
         # 3费牌=3张：更换1或4号牌
-        if 3 in three_cost_count_3:
+        if 3 in cost_3_positions:
             logger.info("3费牌过多(3张)，替换第4张牌")
-            return front_two_three_cost_3[3]
+            return cost_3_positions[3]
         else:
             logger.info("3费牌过多(3张)，替换第1张牌")
-            return front_two_three_cost_3[0]
+            return cost_3_positions[0]
 
     # 2费牌过多处理
-    if three_cost_count_2 == 4:
+    if cost_2_count == 4:
         # 2费牌=4张：前两张都更换
         logger.info("2费牌过多(4张)，替换前两张牌")
         return [0, 1]
 
-    if three_cost_count_2 == 3:
+    if cost_2_count == 3:
         # 2费牌=3张：更换1或2号牌
-        if 0 in three_cost_count_2:
+        if 0 in cost_2_positions:
             logger.info("2费牌过多(3张)，替换第4张牌")
-            return front_two_three_cost_2[0]
+            return cost_2_positions[0]
         else:
             logger.info("2费牌过多(3张)，替换第1张牌")
-            return front_two_three_cost_2[1]
+            return cost_2_positions[1]
 
     # 1费牌过多处理
-    if three_cost_count_1 == 4:
+    if cost_1_count == 4:
         # 1费牌=4张：前两张都更换
         logger.info("2费牌过多(4张)，替换前两张牌")
         return [0, 1]
 
-    if three_cost_count_1 == 3:
+    if cost_1_count == 3:
         # 1费牌=3张：更换1或2号牌
-        if 0 in three_cost_count_1:
+        if 0 in cost_1_positions:
             logger.info("2费牌过多(3张)，替换第4张牌")
-            return front_two_three_cost_1[0]
+            return cost_1_positions[0]
         else:
             logger.info("2费牌过多(3张)，替换第1张牌")
-            return front_two_three_cost_1[1]
+            return cost_1_positions[1]
 
     front_two_three_cost_22 = []
-    if three_cost_count_3 == 2 and three_cost_count_2 == 2:
+    if cost_3_count == 2 and cost_2_count == 2:
         # 3费牌=2张，2费牌=2张：3费和2费牌都更换1张
-        front_two_three_cost_22.append(front_two_three_cost_3[-1])
-        front_two_three_cost_22.append(front_two_three_cost_2[1])
+        front_two_three_cost_22.append(cost_3_positions[-1])
+        front_two_three_cost_22.append(cost_2_positions[1])
         return front_two_three_cost_22
-    elif three_cost_count_3 == 2 and three_cost_count_1 == 2:
+    elif cost_3_count == 2 and cost_1_count == 2:
         # 3费牌=2张，1费牌=2张：3费和1费牌都更换1张
-        front_two_three_cost_22.append(front_two_three_cost_3[-1])
-        front_two_three_cost_22.append(front_two_three_cost_1[1])
+        front_two_three_cost_22.append(cost_3_positions[-1])
+        front_two_three_cost_22.append(cost_1_positions[1])
         return front_two_three_cost_22
-    elif three_cost_count_2 == 2 and three_cost_count_1 == 2:
+    elif cost_2_count == 2 and cost_1_count == 2:
         # 2费牌=2张，1费牌=2张：2费牌更换1张，1费牌更换1张
-        front_two_three_cost_22.append(front_two_three_cost_2[1])
-        front_two_three_cost_22.append(front_two_three_cost_1[1])
+        front_two_three_cost_22.append(cost_2_positions[1])
+        front_two_three_cost_22.append(cost_1_positions[1])
         return front_two_three_cost_22
 
     # 不满足3费档次条件
