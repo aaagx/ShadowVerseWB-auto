@@ -915,7 +915,7 @@ def _check_3_cost_strategy(hand_costs):
         # 3费牌=4张：前两张都更换
         logger.info("3费牌过多(4张)，替换前两张牌")
         return [0, 1]
-        
+
     if three_cost_count_3 == 3:
         # 3费牌=3张：更换1或4号牌
         if 3 in three_cost_count_3:
@@ -930,7 +930,7 @@ def _check_3_cost_strategy(hand_costs):
         # 2费牌=4张：前两张都更换
         logger.info("2费牌过多(4张)，替换前两张牌")
         return [0, 1]
-        
+
     if three_cost_count_2 == 3:
         # 2费牌=3张：更换1或2号牌
         if 0 in three_cost_count_2:
@@ -954,7 +954,7 @@ def _check_3_cost_strategy(hand_costs):
         else:
             logger.info("2费牌过多(3张)，替换第1张牌")
             return front_two_three_cost_1[1]
-    
+
     front_two_three_cost_22 = []
     if three_cost_count_3 == 2 and three_cost_count_2 == 2:
         # 3费牌=2张，2费牌=2张：3费和2费牌都更换1张
@@ -1964,12 +1964,12 @@ class ShadowverseAutomationUI(QMainWindow):
 
     【3费档次】
     • 最优：前三张牌组合为 [1,2,3]
-    • 次优：前2张牌中必须有一张3费牌
+    • 次优：牌序为2，3
     • 目标：确保3费时能准时打出
 
     【4费档次】（向下兼容3费档次）
     • 最优：四张牌组合为 [1,2,3,4]
-    • 次优：前三张牌为 [2,3,4] 或 [2,2,4]
+    • 次优：牌序为 [2,3,4] 或 [2,2,4]
     • 目标：确保4费时能有效展开
 
     【5费档次】（向下兼容4费、3费档次）
