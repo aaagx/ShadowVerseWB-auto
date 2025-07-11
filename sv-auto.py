@@ -917,60 +917,63 @@ def _check_3_cost_strategy(hand_costs):
         return [0, 1]
 
     if cost_3_count == 3:
-        # 3费牌=3张：更换1或4号牌
-        if 3 in cost_3_positions:
-            logger.info("3费牌过多(3张)，替换第4张牌")
-            return cost_3_positions[3]
+        # 3费牌=3张：更换最右的3费牌,如果非3费牌费用高于3,也一起换掉
+        not_3_pos = [i for i in [0,1,2,3] if i not in cost_3_positions][0]
+        if hand_costs[not_3_pos] > 3:
+            logger.info(f"3费牌过多(3张)，替换第{cost_3_positions[-1]+1}张牌,同时替换一张{hand_costs[not_3_pos]}费牌")
+            return [cost_3_positions[-1], not_3_pos]
         else:
-            logger.info("3费牌过多(3张)，替换第1张牌")
-            return cost_3_positions[0]
+            logger.info(f"3费牌过多(3张)，替换第{cost_3_positions[-1]+1}张牌")
+            return [cost_3_positions[-1]]
 
     # 2费牌过多处理
     if cost_2_count == 4:
-        # 2费牌=4张：前两张都更换
-        logger.info("2费牌过多(4张)，替换前两张牌")
+        # 2费牌=4张：更换前两张2费牌
+        logger.info("2费牌过多(4张)，替换前两张2费牌")
         return [0, 1]
 
     if cost_2_count == 3:
-        # 2费牌=3张：更换1或2号牌
-        if 0 in cost_2_positions:
-            logger.info("2费牌过多(3张)，替换第4张牌")
-            return cost_2_positions[0]
+        # 2费牌=3张：更换最左的2费牌,如果非2费牌费用高于3,也一起换掉
+        not_2_pos = [i for i in [0,1,2,3] if i not in cost_2_positions][0]
+        if hand_costs[not_2_pos] > 3:
+            logger.info(f"2费牌过多(3张)，替换第{cost_2_positions[0]+1}张牌,同时替换一张{hand_costs[not_2_pos]}费牌")
+            return [cost_2_positions[0], not_2_pos]
         else:
-            logger.info("2费牌过多(3张)，替换第1张牌")
-            return cost_2_positions[1]
+            logger.info(f"2费牌过多(3张)，替换第{cost_2_positions[0]+1}张牌")
+            return [cost_2_positions[0]]
 
     # 1费牌过多处理
     if cost_1_count == 4:
-        # 1费牌=4张：前两张都更换
-        logger.info("2费牌过多(4张)，替换前两张牌")
+        # 1费牌=4张：更换前两张1费牌
+        logger.info("1费牌过多(4张)，替换前两张1费牌")
         return [0, 1]
 
     if cost_1_count == 3:
-        # 1费牌=3张：更换1或2号牌
-        if 0 in cost_1_positions:
-            logger.info("2费牌过多(3张)，替换第4张牌")
-            return cost_1_positions[0]
+        # 1费牌=3张：更换最左的1费牌,如果非1费牌费用高于3,也一起换掉
+        not_1_pos = [i for i in [0,1,2,3] if i not in cost_1_positions][0]
+        if hand_costs[not_1_pos] > 3:
+            logger.info(f"1费牌过多(3张)，替换第{cost_1_positions[0]+1}张牌,同时替换一张{hand_costs[not_1_pos]}费牌")
+            return [cost_1_positions[0], not_1_pos]
         else:
-            logger.info("2费牌过多(3张)，替换第1张牌")
-            return cost_1_positions[1]
+            logger.info(f"1费牌过多(3张)，替换第{cost_1_positions[0]+1}张牌")
+            return [cost_1_positions[0]]
 
-    front_two_three_cost_22 = []
+    combination_2x2 = []
     if cost_3_count == 2 and cost_2_count == 2:
         # 3费牌=2张，2费牌=2张：3费和2费牌都更换1张
-        front_two_three_cost_22.append(cost_3_positions[-1])
-        front_two_three_cost_22.append(cost_2_positions[1])
-        return front_two_three_cost_22
+        combination_2x2.append(cost_3_positions[-1])
+        combination_2x2.append(cost_2_positions[1])
+        return combination_2x2
     elif cost_3_count == 2 and cost_1_count == 2:
         # 3费牌=2张，1费牌=2张：3费和1费牌都更换1张
-        front_two_three_cost_22.append(cost_3_positions[-1])
-        front_two_three_cost_22.append(cost_1_positions[1])
-        return front_two_three_cost_22
+        combination_2x2.append(cost_3_positions[-1])
+        combination_2x2.append(cost_1_positions[1])
+        return combination_2x2
     elif cost_2_count == 2 and cost_1_count == 2:
         # 2费牌=2张，1费牌=2张：2费牌更换1张，1费牌更换1张
-        front_two_three_cost_22.append(cost_2_positions[1])
-        front_two_three_cost_22.append(cost_1_positions[1])
-        return front_two_three_cost_22
+        combination_2x2.append(cost_2_positions[1])
+        combination_2x2.append(cost_1_positions[1])
+        return combination_2x2
 
     # 不满足3费档次条件
     logger.info("不满足3费档次条件，需要调整手牌")
