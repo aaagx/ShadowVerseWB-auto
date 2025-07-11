@@ -15,7 +15,7 @@ from ctypes import windll
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QTextEdit, QFrame, QGridLayout
+    QLineEdit, QPushButton, QTextEdit, QFrame, QGridLayout, QComboBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QPalette, QColor
@@ -101,6 +101,7 @@ notification_queue = queue.Queue()
 
 # 模板目录
 TEMPLATES_DIR = "templates"
+TEMPLATES_DIR_COST = "templates_cost"
 
 # 进化按钮模板（全局）
 evolution_template = None
@@ -412,7 +413,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors, config):
             if shield_targets:
                 logger.info(f"检测到护盾目标，优先攻击")
                 target_x, target_y = shield_targets[0]
-                attackDelay = 2.1
+                attackDelay = 1.0
             else:
                 need_scan_shield = False
                 logger.info(f"未检测到护盾，直接攻击主战者")
@@ -753,6 +754,289 @@ def enable_ansi_support():
     if not kernel32.SetConsoleMode(handle, mode.value | 0x0004):
         return
 
+# 新增：换牌功能函数
+def perform_card_replacement(strategy, device, templates_cost):
+    """
+    执行换牌操作：根据选择的策略检测手牌并替换不符合条件的牌
+
+    Args:
+        strategy: 换牌策略 ('3费档次', '4费档次', '5费档次')
+    """
+    try:
+        logger.info(f"开始执行换牌检测 - 策略: {strategy}")
+        time.sleep(1)
+
+        # 重新截图用于费用检测
+        card_screenshot = take_screenshot()
+        if card_screenshot is None:
+            logger.info("无法获取换牌截图")
+            return
+
+        # 转换为OpenCV格式
+        card_screenshot_np = np.array(card_screenshot)
+        card_screenshot_cv = cv2.cvtColor(card_screenshot_np, cv2.COLOR_RGB2BGR)
+        gray_card_screenshot = cv2.cvtColor(card_screenshot_cv, cv2.COLOR_BGR2GRAY)
+
+        # 定义四张手牌的费用检测区域
+        hand_card_regions = [
+            (177, 408, 214, 447),  # 第1张牌的费用区域
+            (382, 411, 421, 453),  # 第2张牌的费用区域
+            (590, 411, 624, 450),  # 第3张牌的费用区域
+            (797, 411, 831, 450),  # 第4张牌的费用区域
+        ]
+
+        # 定义手牌中心位置（用于向上滑动）
+        hand_card_centers = [
+            (274, 518), (477, 527), (681, 521), (884, 524)
+        ]
+
+        # 检测每张手牌的费用
+        hand_costs = []
+        for i, region in enumerate(hand_card_regions):
+            x1, y1, x2, y2 = region
+            card_region = gray_card_screenshot[y1:y2, x1:x2]
+
+            # 调试：保存调试图片（可选）
+            # cv2.imwrite(f"debug_card_{i+1}_region.jpg", card_region)
+
+            # 图像预处理
+            card_region_enhanced = cv2.equalizeHist(card_region)
+
+            detected_cost = None
+            max_confidence = 0
+
+            # 检测费用（1-5费）
+            for cost in range(1, 6):
+                cost_type = f'cost_{cost}'
+                if cost_type in templates_cost and templates_cost[cost_type]:
+                    # 对原始和增强图像都进行匹配
+                    max_loc1, max_val1 = match_template(card_region, templates_cost[cost_type])
+                    max_loc2, max_val2 = match_template(card_region_enhanced, templates_cost[cost_type])
+
+                    max_val = max(max_val1, max_val2)
+                    threshold = templates_cost[cost_type]['threshold']
+
+                    logger.info(f"第{i+1}张牌检测{cost}费: 匹配度{max_val:.3f}, 阈值{threshold:.3f}")
+
+                    if max_val >= threshold and max_val > max_confidence:
+                        max_confidence = max_val
+                        detected_cost = cost
+
+            # 如果没有检测到1-5费中的任何一种，默认为6费以上
+            if detected_cost is None:
+                detected_cost = 6
+                logger.info(f"第{i+1}张牌未识别出具体费用，默认为6费+")
+            else:
+                logger.info(f"第{i+1}张牌检测为{detected_cost}费")
+
+            hand_costs.append(detected_cost)
+
+        # 根据策略决定是否需要换牌
+        cards_to_replace = _determine_cards_to_replace(hand_costs, strategy)
+
+        # 执行换牌操作
+        if cards_to_replace:
+            logger.info(f"需要替换的手牌: {[i+1 for i in cards_to_replace]}")
+            for card_index in cards_to_replace:
+                center_x, center_y = hand_card_centers[card_index]
+                # 向上滑动替换手牌
+                device.swipe(center_x, center_y, center_x, center_y - 300, duration=0.3)
+                logger.info(f"已替换第{card_index+1}张牌")
+                time.sleep(0.5)
+        else:
+            logger.info("当前手牌符合策略要求，无需替换")
+
+        time.sleep(1)
+
+    except Exception as e:
+        logger.info(f"换牌操作出错: {str(e)}")
+
+def _determine_cards_to_replace(hand_costs, strategy):
+    """
+    根据策略和手牌费用决定哪些牌需要替换
+
+    Args:
+        hand_costs: 4张手牌的费用列表
+        strategy: 换牌策略
+
+    Returns:
+        需要替换的牌的索引列表
+    """
+    logger.info(f"当前手牌费用: {hand_costs}")
+
+    # 根据策略检查，使用向下兼容
+    if strategy == '5费档次':
+        result = _check_5_cost_strategy(hand_costs)
+        if result is not None:
+            return result
+        logger.info("5费档次条件不满足，检查4费档次")
+        strategy = '4费档次'
+
+    if strategy == '4费档次':
+        result = _check_4_cost_strategy(hand_costs)
+        if result is not None:
+            return result
+        logger.info("4费档次条件不满足，检查3费档次")
+        strategy = '3费档次'
+
+    if strategy == '3费档次':
+        return _check_3_cost_strategy(hand_costs)
+
+    return []
+
+def _check_3_cost_strategy(hand_costs):
+    """
+    检查3费档次策略
+    条件：前三张牌组合为[1,2,3]，否则前2张必须有一张是3费牌
+    """
+    front_three = sorted(hand_costs[:3])
+
+    # 检查是否满足[1,2,3]组合
+    if front_three == [1, 2, 3]:
+        logger.info("满足3费档次最优组合[1,2,3]，保留所有牌")
+        return []
+
+    # 统计3费牌数量
+    cost_3_count = hand_costs.count(3)
+    # 统计2费牌数量
+    cost_2_count = hand_costs.count(2)
+    # 统计1费牌数量
+    cost_1_count = hand_costs.count(1)
+
+    # 3费牌位置
+    cost_3_positions = [i for i, value in enumerate(hand_costs) if value == 3]
+    # 2费牌位置
+    cost_2_positions = [i for i, value in enumerate(hand_costs) if value == 2]
+    # 1费牌位置
+    cost_1_positions = [i for i, value in enumerate(hand_costs) if value == 1]
+
+    # 3费牌过多处理
+    if cost_3_count == 4:
+        # 3费牌=4张：前两张都更换
+        logger.info("3费牌过多(4张)，替换前两张牌")
+        return [0, 1]
+
+    if cost_3_count == 3:
+        # 3费牌=3张：更换1或4号牌
+        if 3 in cost_3_positions:
+            logger.info("3费牌过多(3张)，替换第4张牌")
+            return cost_3_positions[3]
+        else:
+            logger.info("3费牌过多(3张)，替换第1张牌")
+            return cost_3_positions[0]
+
+    # 2费牌过多处理
+    if cost_2_count == 4:
+        # 2费牌=4张：前两张都更换
+        logger.info("2费牌过多(4张)，替换前两张牌")
+        return [0, 1]
+
+    if cost_2_count == 3:
+        # 2费牌=3张：更换1或2号牌
+        if 0 in cost_2_positions:
+            logger.info("2费牌过多(3张)，替换第4张牌")
+            return cost_2_positions[0]
+        else:
+            logger.info("2费牌过多(3张)，替换第1张牌")
+            return cost_2_positions[1]
+
+    # 1费牌过多处理
+    if cost_1_count == 4:
+        # 1费牌=4张：前两张都更换
+        logger.info("2费牌过多(4张)，替换前两张牌")
+        return [0, 1]
+
+    if cost_1_count == 3:
+        # 1费牌=3张：更换1或2号牌
+        if 0 in cost_1_positions:
+            logger.info("2费牌过多(3张)，替换第4张牌")
+            return cost_1_positions[0]
+        else:
+            logger.info("2费牌过多(3张)，替换第1张牌")
+            return cost_1_positions[1]
+
+    front_two_three_cost_22 = []
+    if cost_3_count == 2 and cost_2_count == 2:
+        # 3费牌=2张，2费牌=2张：3费和2费牌都更换1张
+        front_two_three_cost_22.append(cost_3_positions[-1])
+        front_two_three_cost_22.append(cost_2_positions[1])
+        return front_two_three_cost_22
+    elif cost_3_count == 2 and cost_1_count == 2:
+        # 3费牌=2张，1费牌=2张：3费和1费牌都更换1张
+        front_two_three_cost_22.append(cost_3_positions[-1])
+        front_two_three_cost_22.append(cost_1_positions[1])
+        return front_two_three_cost_22
+    elif cost_2_count == 2 and cost_1_count == 2:
+        # 2费牌=2张，1费牌=2张：2费牌更换1张，1费牌更换1张
+        front_two_three_cost_22.append(cost_2_positions[1])
+        front_two_three_cost_22.append(cost_1_positions[1])
+        return front_two_three_cost_22
+
+    # 不满足3费档次条件
+    logger.info("不满足3费档次条件，需要调整手牌")
+
+    return [i for i, cost in enumerate(hand_costs) if cost > 3]
+
+def _check_4_cost_strategy(hand_costs):
+    """
+    检查4费档次策略
+    条件：组合[1,2,3,4]，否则前三张为[2,3,4]或[2,2,4]
+    """
+    sorted_hand = sorted(hand_costs)
+
+    # 检查是否满足[1,2,3,4]组合
+    if sorted_hand == [1, 2, 3, 4]:
+        logger.info("满足4费档次最优组合[1,2,3,4]，保留所有牌")
+        return []
+
+    # 检查前三张是否为[2,3,4]或[2,2,4]
+    front_three = sorted(set(hand_costs))
+    # 位置2、3均为4费
+    if hand_costs[1] == 4 and hand_costs[2] == 4:
+        if hand_costs == [2, 3, 4] or hand_costs == [2, 4]:
+            logger.info(f"组合[{sorted(hand_costs)}符合4费档次要求")
+            # 无需换牌
+            return []
+    # 位置1、2均为4费
+    if hand_costs[0] == 4 or hand_costs[1] == 4:
+        if sorted(front_three[:3]) == [2, 3, 4] or sorted(hand_costs[:3]) == [2, 2, 4]:
+            logger.info(f"组合{hand_costs}符合4费档次要求")
+            # 替换大于4费的牌
+            return [i for i, cost in enumerate(hand_costs) if cost > 4]
+    # 位置3为4费
+    if hand_costs[2] == 4:
+        if sorted(hand_costs[:3]) == [2, 3, 4] or sorted(hand_costs[:3]) == [2, 2, 4]:
+            logger.info(f"组合{hand_costs}符合4费档次要求")
+            # 替换大于4费的牌
+            return [i for i, cost in enumerate(hand_costs) if cost > 4]
+
+    # 不满足4费档次条件
+    logger.info("不满足4费档次条件")
+    return None
+
+def _check_5_cost_strategy(hand_costs):
+    """
+    检查5费档次策略
+    优先级：[2,3,4,5] > [2,3,3,5] > [2,2,3,5] > [2,2,2,5]
+    """
+    sorted_hand = sorted(hand_costs)
+
+    # 定义5费档次的优先组合
+    preferred_combinations = [
+        [2, 3, 4, 5],
+        [2, 3, 3, 5],
+        [2, 2, 3, 5],
+        [2, 2, 2, 5]
+    ]
+
+    for i, combination in enumerate(preferred_combinations):
+        if sorted_hand == combination:
+            logger.info(f"满足5费档次组合{combination}（优先级{i+1}），保留所有牌")
+            return []
+
+    logger.info("不满足5费档次任何组合")
+    return None
+
 # ================== UI 相关类 ==================
 class UILogHandler(logging.Handler):
     def __init__(self, log_signal):
@@ -781,7 +1065,8 @@ class ScriptThread(QThread):
         self.current_turn = 0
         self.adb_port = config["emulator_port"]
         self.scan_interval = config["scan_interval"]
-
+        # 从配置中获取换牌策略
+        self.card_replacement_strategy = config.get("card_replacement", {}).get("strategy", "3费档次")
         # 初始化设备对象
         self.u2_device = None
         self.adb_device = None
@@ -859,6 +1144,14 @@ class ScriptThread(QThread):
                 'rankUp': create_template_info(load_template(TEMPLATES_DIR, 'rankUp.png'), "阶位提升"),
                 'groupUp': create_template_info(load_template(TEMPLATES_DIR, 'groupUp.png'), "分组升级"),
                 'rank': create_template_info(load_template(TEMPLATES_DIR, 'rank.png'), "阶级积分"),
+            }
+
+            self.templates_cost = {
+                'cost_1': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_1.png'), "费用1"),
+                'cost_2': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_2.png'), "费用2"),
+                'cost_3': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_3.png'), "费用3"),
+                'cost_4': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_4.png'), "费用4"),
+                'cost_5': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_5.png'), "费用5"),
             }
 
             extra_dir = self.config.get("extra_templates_dir", "")
@@ -955,6 +1248,7 @@ class ScriptThread(QThread):
                 self.log_signal.emit(f"设备连接失败: {str(e)}")
                 self.status_signal.emit("连接失败")
                 return
+
 
             # 新增：重启应用的函数
             def restart_app():
@@ -1114,6 +1408,19 @@ class ScriptThread(QThread):
                             reset_activity_timer()  # 重置活动计时器
                             if key == 'end_round' and in_match:
                                 self.log_signal.emit(f"已发现'结束回合'按钮 (当前回合: {current_round_count})")
+
+                        if key == 'decision':
+                            self.log_signal.emit("检测到换牌界面，开始执行换牌逻辑")
+                            # 执行换牌操作
+                            perform_card_replacement(self.card_replacement_strategy, self.u2_device, self.templates_cost) # 换牌完成后点击决定按钮
+                            center_x = max_loc[0] + template_info['w'] // 2
+                            center_y = max_loc[1] + template_info['h'] // 2
+                            self.u2_device.click(center_x + random.randint(-2, 2), center_y + random.randint(-2, 2))
+                            self.log_signal.emit("换牌完成，点击决定按钮")
+                            last_detected_button = key
+                            button_detected = True
+                            time.sleep(1)
+                            break
 
                         # 处理每日卡包
                         if key == 'dailyCard':
@@ -1384,6 +1691,25 @@ class ShadowverseAutomationUI(QMainWindow):
                 border: 1px solid #CCCCCC;
                 border-radius: 5px;
             }
+            QComboBox {
+                background-color: rgba(255, 255, 255, 255);
+                color: #333333;
+                border: 1px solid #CCCCCC;
+                border-radius: 5px;
+                padding: 5px;
+                min-width: 120px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid #666666;
+                margin-right: 5px;
+            }
             #StatsFrame {
                 background-color: rgba(255, 255, 255, 240);
                 border: 1px solid #CCCCCC;
@@ -1480,6 +1806,30 @@ class ShadowverseAutomationUI(QMainWindow):
 
         main_layout.addLayout(adb_layout)
 
+        # 新增：换牌策略配置部分（移除开关，默认启用）
+        strategy_layout = QHBoxLayout()
+
+        # 策略选择
+        strategy_label = QLabel("换牌策略:")
+        self.strategy_combo = QComboBox()
+        self.strategy_combo.addItems(['3费档次', '4费档次', '5费档次'])
+        self.strategy_combo.setCurrentText('3费档次')  # 默认选择3费档次
+
+        strategy_layout.addWidget(strategy_label)
+        strategy_layout.addWidget(self.strategy_combo)
+
+        # 添加策略说明按钮
+        self.strategy_help_btn = QPushButton("?")
+        self.strategy_help_btn.setMaximumWidth(30)
+        self.strategy_help_btn.setToolTip("点击查看换牌策略说明")
+        self.strategy_help_btn.clicked.connect(self.show_strategy_help)
+        strategy_layout.addWidget(self.strategy_help_btn)
+
+        # 添加弹性空间
+        strategy_layout.addStretch()
+
+        main_layout.addLayout(strategy_layout)
+
         # 控制按钮
         btn_layout = QHBoxLayout()
         self.resume_btn = QPushButton("恢复")
@@ -1570,6 +1920,12 @@ class ShadowverseAutomationUI(QMainWindow):
         except:
             config["emulator_port"] = 16384
 
+        # 新增：添加换牌策略配置（默认启用）
+        config["card_replacement"] = {
+            "enabled": True,  # 默认启用
+            "strategy": self.strategy_combo.currentText()
+        }
+
         # 创建工作线程
         self.script_thread = ScriptThread(config)
         self.script_thread.log_signal.connect(self.log_output.append)
@@ -1583,6 +1939,52 @@ class ShadowverseAutomationUI(QMainWindow):
         self.stop_btn.setEnabled(True)
         self.pause_btn.setEnabled(True)
         self.stats_btn.setEnabled(True)
+
+
+    # 简化获取换牌策略的方法
+    def get_replacement_strategy(self):
+        """获取当前选择的换牌策略"""
+        return self.strategy_combo.currentText()
+
+    def show_stats(self):
+        self.log_output.append("===== 对战统计 =====")
+        self.log_output.append(f"总对战次数: {self.battle_count_label.text()}")
+        self.log_output.append(f"总回合数: {self.turn_count_label.text()}")
+        self.log_output.append(f"平均回合数: {self.calculate_avg_turns()}")
+        # 显示当前换牌策略
+        self.log_output.append(f"换牌策略: {self.strategy_combo.currentText()}")
+
+    # 策略说明对话框保持不变
+    def show_strategy_help(self):
+        """显示换牌策略说明"""
+        from PyQt5.QtWidgets import QMessageBox
+
+        help_text = """
+    换牌策略说明：
+
+    【3费档次】
+    • 最优：前三张牌组合为 [1,2,3]
+    • 次优：牌序为2，3
+    • 目标：确保3费时能准时打出
+
+    【4费档次】（向下兼容3费档次）
+    • 最优：四张牌组合为 [1,2,3,4]
+    • 次优：牌序为 [2,3,4] 或 [2,2,4]
+    • 目标：确保4费时能有效展开
+
+    【5费档次】（向下兼容4费、3费档次）
+    • 优先级组合（从高到低）：
+    [2,3,4,5] > [2,3,3,5] > [2,2,3,5] > [2,2,2,5]
+    • 目标：确保5费时能打出关键牌
+
+    注意：高档次策略条件不满足时会自动检查低档次策略
+        """
+
+        msg = QMessageBox()
+        msg.setWindowTitle("换牌策略说明")
+        msg.setText(help_text)
+        msg.setIcon(QMessageBox.Information)
+        msg.exec_()
 
     def resume_script(self):
         if self.script_thread:
