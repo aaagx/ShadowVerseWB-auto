@@ -1792,7 +1792,7 @@ class ShadowverseAutomationUI(QMainWindow):
         # ADB 连接部分
         adb_layout = QHBoxLayout()
         adb_label = QLabel("ADB 端口:")
-        self.adb_input = QLineEdit(f"127.0.0.1:{self.config["emulator_port"]}")
+        self.adb_input = QLineEdit(f'127.0.0.1:{self.config["emulator_port"]}')
         self.start_btn = QPushButton("开始")
         self.start_btn.clicked.connect(self.start_script)
 
