@@ -216,3 +216,4 @@ config.json
 /test_resource
 round_statistics.json
 sv-auto.exe
+.vscode/settings.json
