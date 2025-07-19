@@ -2203,4 +2203,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"程序崩溃: {e}")
         # 弹窗提示错误
-        QMessageBox.critical(None， "错误", f"程序崩溃: {e}")
+        QMessageBox.critical(None,"错误", f"程序崩溃: {e}")
