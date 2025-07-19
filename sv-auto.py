@@ -15,11 +15,17 @@ from ctypes import windll
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QTextEdit, QFrame, QGridLayout, QComboBox
+    QLineEdit, QPushButton, QTextEdit, QFrame, QGridLayout, QComboBox, QMessageBox
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QPalette, QColor
+from PyQt5.QtGui import QPalette, QColor, QPixmap, QBrush, QDoubleValidator
 from PyQt5.QtWidgets import QMessageBox
+
+# 当前版本号
+CURRENT_VERSION = "1.2.0"
+
+# 背景图片路径
+BACKGROUND_IMAGE = os.path.join("Image", "ui背景.jpg") if os.path.exists("Image") else None
 
 # 随从的位置坐标（720P分辨率）
 follower_positions = [
@@ -40,7 +46,10 @@ DEFAULT_CONFIG = {
     "scan_interval": 2,
     "evolution_threshold": 0.85,
     "extra_templates_dir": "extra_templates",
-    "extra_drag_delay": 0.01
+    "server": "国服",  # 默认服务器
+    "version": CURRENT_VERSION,  # 当前版本
+    "attack_delay": 0.25,  # 新增：攻击延迟默认值
+    "extra_drag_delay": 0.05   # 新增：拖拽操作后的额外延迟
 }
 
 def load_config():
@@ -100,8 +109,9 @@ current_run_start_time = None  # 本次脚本启动时间
 notification_queue = queue.Queue()
 
 # 模板目录
-TEMPLATES_DIR = "templates"
-TEMPLATES_DIR_COST = "templates_cost"
+TEMPLATES_DIR = "templates" # 国服模板目录
+TEMPLATES_DIR_INTERNATIONAL = "templates2"  # 国际服模板目录
+TEMPLATES_DIR_COST = "templates_cost"  # 费用模板目录
 
 # 进化按钮模板（全局）
 evolution_template = None
@@ -290,12 +300,16 @@ def curved_drag(u2_device, start_x, start_y, end_x, end_y, duration, extra_delay
     time.sleep(extra_delay)
     u2_device.touch.up(end_x, end_y)
 
-def load_evolution_template():
+def load_evolution_template(server):
     """加载进化按钮模板"""
     global evolution_template
+    
+    # 根据服务器选择模板目录
+    templates_dir = TEMPLATES_DIR if server == "国服" else TEMPLATES_DIR_INTERNATIONAL
+    
     if evolution_template is None:
         # 使用全局定义的 TEMPLATES_DIR
-        template_img = load_template(TEMPLATES_DIR, 'evolution.png')
+        template_img = load_template(templates_dir, 'evolution.png')
         if template_img is None:
             logger.error("无法加载进化按钮模板")
             return None
@@ -307,12 +321,16 @@ def load_evolution_template():
         )
     return evolution_template
 
-def load_super_evolution_template():
+def load_super_evolution_template(server):
     """加载超进化按钮模板"""
     global super_evolution_template
+    
+    # 根据服务器选择模板目录
+    templates_dir = TEMPLATES_DIR if server == "国服" else TEMPLATES_DIR_INTERNATIONAL
+    
     if super_evolution_template is None:
         # 使用全局定义的 TEMPLATES_DIR
-        template_img = load_template(TEMPLATES_DIR, 'super_evolution.png')
+        template_img = load_template(templates_dir, 'super_evolution.png')
         if template_img is None:
             logger.error("无法加载超进化按钮模板")
             return None
@@ -324,18 +342,18 @@ def load_super_evolution_template():
         )
     return super_evolution_template
 
-def detect_evolution_button(gray_screenshot):
+def detect_evolution_button(gray_screenshot, server):
     """检测进化按钮是否出现"""
-    evolution_info = load_evolution_template()
+    evolution_info = load_evolution_template(server)
     if not evolution_info:
         return None, 0
 
     max_loc, max_val = match_template(gray_screenshot, evolution_info)
     return max_loc, max_val
 
-def detect_super_evolution_button(gray_screenshot):
+def detect_super_evolution_button(gray_screenshot, server):
     """检测超进化按钮是否出现"""
-    evolution_info = load_super_evolution_template()
+    evolution_info = load_super_evolution_template(server)
     if not evolution_info:
         return None, 0
 
@@ -413,7 +431,7 @@ def perform_follower_attacks(u2_device, screenshot, base_colors, config):
             if shield_targets:
                 logger.info(f"检测到护盾目标，优先攻击")
                 target_x, target_y = shield_targets[0]
-                attackDelay = 1.0
+                attackDelay = 2.1
             else:
                 need_scan_shield = False
                 logger.info(f"未检测到护盾，直接攻击主战者")
@@ -424,8 +442,16 @@ def perform_follower_attacks(u2_device, screenshot, base_colors, config):
             curved_drag(u2_device, x, y, target_x, target_y, 0.03, config["extra_drag_delay"], 3)
             time.sleep(attackDelay)
 
-    # 避免攻击被卡掉
-    time.sleep(0.25)
+    # 避免攻击被卡掉 - 使用传入的自定义延迟参数
+    time.sleep(config["attack_delay"])
+
+def save_round_statistics():
+    """保存回合统计数据到文件"""
+    try:
+        with open(round_stats_file, 'w', encoding='utf-8') as f:
+            json.dump(match_history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"保存统计数据失败: {str(e)}")
 
 def perform_evolution_actions(u2_device, screenshot, base_colors):
     """
@@ -504,9 +530,9 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
             gray_screenshot = cv2.cvtColor(new_screenshot_cv, cv2.COLOR_BGR2GRAY)
 
             # 同时检查两个检测函数
-            max_loc, max_val = detect_super_evolution_button(gray_screenshot)
+            max_loc, max_val = detect_super_evolution_button(gray_screenshot, "国服")
             if max_val >= 0.825:
-                template_info = load_super_evolution_template()
+                template_info = load_super_evolution_template("国服")
                 if template_info:
                     center_x = max_loc[0] + template_info['w'] // 2
                     center_y = max_loc[1] + template_info['h'] // 2
@@ -515,9 +541,9 @@ def perform_evolution_actions(u2_device, screenshot, base_colors):
                     evolution_detected = True
                     break
 
-            max_loc1, max_val1 = detect_evolution_button(gray_screenshot)
+            max_loc1, max_val1 = detect_evolution_button(gray_screenshot, "国服")
             if max_val1 >= 0.90:
-                template_info = load_evolution_template()
+                template_info = load_evolution_template("国服")
                 if template_info:
                     center_x = max_loc1[0] + template_info['w'] // 2
                     center_y = max_loc1[1] + template_info['h'] // 2
@@ -561,9 +587,9 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
         screenshot_cv = cv2.cvtColor(screenshot_np, cv2.COLOR_RGB2BGR)
         gray_screenshot = cv2.cvtColor(screenshot_cv, cv2.COLOR_BGR2GRAY)
 
-        max_loc, max_val = detect_super_evolution_button(gray_screenshot)
+        max_loc, max_val = detect_super_evolution_button(gray_screenshot, "国服")
         if max_val >= 0.825:
-            template_info = load_super_evolution_template()
+            template_info = load_super_evolution_template("国服")
             center_x = max_loc[0] + template_info['w'] // 2
             center_y = max_loc[1] + template_info['h'] // 2
             u2_device.click(center_x, center_y)
@@ -571,9 +597,9 @@ def perform_evolution_actions_fallback(u2_device, is_super=False):
             evolution_detected = True
             break
 
-        max_loc1, max_val1 = detect_evolution_button(gray_screenshot)
+        max_loc1, max_val1 = detect_evolution_button(gray_screenshot, "国服")
         if max_val1 >= 0.90:  # 检测阈值
-            template_info = load_evolution_template()
+            template_info = load_evolution_template("国服")
             center_x = max_loc1[0] + template_info['w'] // 2
             center_y = max_loc1[1] + template_info['h'] // 2
             u2_device.click(center_x, center_y)
@@ -1068,8 +1094,9 @@ class ScriptThread(QThread):
         self.current_turn = 0
         self.adb_port = config["emulator_port"]
         self.scan_interval = config["scan_interval"]
-        # 从配置中获取换牌策略
-        self.card_replacement_strategy = config.get("card_replacement", {}).get("strategy", "3费档次")
+        self.server = config["server"]  # 当前选择的服务器
+# 从配置中获取换牌策略
+        self.card_replacement_strategy = config.get("card_replacement", {}).get("strategy", "3费档次")        
         # 初始化设备对象
         self.u2_device = None
         self.adb_device = None
@@ -1123,32 +1150,35 @@ class ScriptThread(QThread):
 
             # 1. 加载所有模板
             self.log_signal.emit("正在加载模板...")
+            
+            # 根据服务器选择模板目录
+            templates_dir = TEMPLATES_DIR if self.server == "国服" else TEMPLATES_DIR_INTERNATIONAL
 
             self.templates = {
-                'dailyCard': create_template_info(load_template(TEMPLATES_DIR, 'dailyCard.png'), "每日卡包"),
-                'missionCompleted': create_template_info(load_template(TEMPLATES_DIR, 'missionCompleted.png'), "任务完成"),
-                'backTitle': create_template_info(load_template(TEMPLATES_DIR, 'backTitle.png'), "返回标题"),
-                'errorBackMain': create_template_info(load_template(TEMPLATES_DIR, 'errorBackMain.png'), "遇到错误，返回主页面"),
-                'error_retry': create_template_info(load_template(TEMPLATES_DIR, 'error_retry.png'), "重试"),
-                'Ok': create_template_info(load_template(TEMPLATES_DIR, 'Ok.png'), "好的"),
-                'decision': create_template_info(load_template(TEMPLATES_DIR, 'decision.png'), "决定"),
-                'end_round': create_template_info(load_template(TEMPLATES_DIR, 'end_round.png'), "结束回合"),
-                'enemy_round': create_template_info(load_template(TEMPLATES_DIR, 'enemy_round.png'), "敌方回合"),
-                'end': create_template_info(load_template(TEMPLATES_DIR, 'end.png'), "结束"),
-                'war': create_template_info(load_template(TEMPLATES_DIR, 'war.png'), "决斗"),
-                'mainPage': create_template_info(load_template(TEMPLATES_DIR, 'mainPage.png'), "游戏主页面"),
-                'MuMuPage': create_template_info(load_template(TEMPLATES_DIR, 'MuMuPage.png'), "MuMu主页面"),
-                'LoginPage': create_template_info(load_template(TEMPLATES_DIR, 'LoginPage.png'), "排队主界面"),
-                'enterGame': create_template_info(load_template(TEMPLATES_DIR, 'enterGame.png'), "排队进入"),
-                'yes': create_template_info(load_template(TEMPLATES_DIR, 'Yes.png'), "继续中断的对战"),
-                'close1': create_template_info(load_template(TEMPLATES_DIR, 'close1.png'), "关闭卡组预览/编辑"),
-                'close2': create_template_info(load_template(TEMPLATES_DIR, 'close2.png'), "关闭卡组预览/编辑"),
-                'backMain': create_template_info(load_template(TEMPLATES_DIR, 'backMain.png'), "返回主页面"),
-                'rankUp': create_template_info(load_template(TEMPLATES_DIR, 'rankUp.png'), "阶位提升"),
-                'groupUp': create_template_info(load_template(TEMPLATES_DIR, 'groupUp.png'), "分组升级"),
-                'rank': create_template_info(load_template(TEMPLATES_DIR, 'rank.png'), "阶级积分"),
+                'dailyCard': create_template_info(load_template(templates_dir, 'dailyCard.png'), "每日卡包"),
+                'missionCompleted': create_template_info(load_template(templates_dir, 'missionCompleted.png'), "任务完成"),
+                'backTitle': create_template_info(load_template(templates_dir, 'backTitle.png'), "返回标题"),
+                'errorBackMain': create_template_info(load_template(templates_dir, 'errorBackMain.png'), "遇到错误，返回主页面"),
+                'error_retry': create_template_info(load_template(templates_dir, 'error_retry.png'), "重试"),
+                'Ok': create_template_info(load_template(templates_dir, 'Ok.png'), "好的"),
+                'decision': create_template_info(load_template(templates_dir, 'decision.png'), "决定"),
+                'end_round': create_template_info(load_template(templates_dir, 'end_round.png'), "结束回合"),
+                'enemy_round': create_template_info(load_template(templates_dir, 'enemy_round.png'), "敌方回合"),
+                'end': create_template_info(load_template(templates_dir, 'end.png'), "结束"),
+                'war': create_template_info(load_template(templates_dir, 'war.png'), "决斗"),
+                'mainPage': create_template_info(load_template(templates_dir, 'mainPage.png'), "游戏主页面"),
+                'MuMuPage': create_template_info(load_template(templates_dir, 'MuMuPage.png'), "MuMu主页面"),
+                'LoginPage': create_template_info(load_template(templates_dir, 'LoginPage.png'), "排队主界面", threshold=0.35),
+                'enterGame': create_template_info(load_template(templates_dir, 'enterGame.png'), "排队进入"),
+                'yes': create_template_info(load_template(templates_dir, 'Yes.png'), "继续中断的对战"),
+                'close1': create_template_info(load_template(templates_dir, 'close1.png'), "关闭卡组预览/编辑"),
+                'close2': create_template_info(load_template(templates_dir, 'close2.png'), "关闭卡组预览/编辑"),
+                'backMain': create_template_info(load_template(templates_dir, 'backMain.png'), "返回主页面"),
+                'rankUp': create_template_info(load_template(templates_dir, 'rankUp.png'), "阶位提升"),
+                'groupUp': create_template_info(load_template(templates_dir, 'groupUp.png'), "分组升级"),
+                'rank': create_template_info(load_template(templates_dir, 'rank.png'), "阶级积分"),
             }
-
+            
             self.templates_cost = {
                 'cost_1': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_1.png'), "费用1"),
                 'cost_2': create_template_info(load_template(TEMPLATES_DIR_COST, 'cost_2.png'), "费用2"),
@@ -1252,7 +1282,6 @@ class ScriptThread(QThread):
                 self.status_signal.emit("连接失败")
                 return
 
-
             # 新增：重启应用的函数
             def restart_app():
                 """重启游戏应用"""
@@ -1302,6 +1331,15 @@ class ScriptThread(QThread):
                 end_round_info = self.templates['end_round']
                 enemy_round_info = self.templates['enemy_round']
                 decision_info = self.templates['decision']
+                
+                # 检测换牌开场
+                if decision_info:
+                    max_loc, max_val = match_template(gray_init_screenshot, decision_info)
+                    if max_val >= decision_info['threshold']:
+                        in_match = True
+                        match_start_time = time.time()
+                        current_round_count = 1
+                        self.log_signal.emit("脚本启动时检测到已处于换牌阶段，自动设置回合数为1")    
 
                 # 检测我方回合
                 if end_round_info:
@@ -1321,14 +1359,6 @@ class ScriptThread(QThread):
                         current_round_count = 2
                         self.log_signal.emit("脚本启动时检测到已处于敌方回合，自动设置回合数为2")
 
-                # 检测换牌开场
-                if decision_info:
-                    max_loc, max_val = match_template(gray_init_screenshot, decision_info)
-                    if max_val >= decision_info['threshold']:
-                        in_match = True
-                        match_start_time = time.time()
-                        current_round_count = 1
-                        self.log_signal.emit("脚本启动时检测到已处于换牌阶段，自动设置回合数为1")
             else:
                 self.log_signal.emit("无法获取初始截图，跳过状态检测")
 
@@ -1346,7 +1376,7 @@ class ScriptThread(QThread):
 {red_start}
 【提示】本脚本为免费开源项目，您无需付费即可获取。
 若您通过付费渠道购买，可能已遭遇误导。
-免费版本请加群: 967632615
+免费版本请加群: 967632615，1070074638
 警惕倒卖行为！
 {red_end}
 """
@@ -1466,7 +1496,7 @@ class ScriptThread(QThread):
                                     base_colors.append((color1, color2))
                                 self.log_signal.emit("第1回合，记录基准背景色完成")
 
-                            self_shield_targets = scan_self_shield_targets()
+                            # self_shield_targets = scan_self_shield_targets()
                             # if self_shield_targets:
                             #     # 暂停脚本并通知用户
                             #     self.paused = True
@@ -1488,8 +1518,8 @@ class ScriptThread(QThread):
                             if current_round_count in (4, 5, 6, 7, 8):  # 第4 ，5，6 ,7,8回合
                                 self.log_signal.emit(f"第{current_round_count}回合，执行进化/超进化")
                                 perform_fullPlus_actions(self.u2_device, current_round_count, base_colors, self.config)
-                            elif current_round_count > 12:   #12回合以上弃权防止烧绳
-                                self.log_signal.emit(f"12回合以上，直接弃权")
+                            elif current_round_count > 30:   #30回合以上弃权防止烧绳
+                                self.log_signal.emit(f"30回合以上，直接弃权")
                                 time.sleep(0.5)
                                 self.u2_device.click(57, 63)
                                 time.sleep(0.5)
@@ -1621,61 +1651,73 @@ class ShadowverseAutomationUI(QMainWindow):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowMinimizeButtonHint)
         self.setWindowTitle("Shadowverse 自动化脚本")
         self.setGeometry(100, 100, 900, 700)
-
+        
         # 加载配置
         self.config = load_config()
-
+        
         # 设置窗口背景
         self.set_background()
-
+        
         # 初始化UI
         self.init_ui()
-
+        
         # 工作线程
         self.script_thread = None
         self.run_time = 0
         self.timer = QTimer(self)
-
+        self.timer.timeout.connect(self.update_run_time)
+        
         # 窗口控制按钮状态
         self.is_maximized = False
 
     def set_background(self):
         # 创建调色板
         palette = self.palette()
-
-        palette.setColor(QPalette.Window, QColor(240, 240, 240, 255))
-
+        
+        # 检查背景图片是否存在
+        if BACKGROUND_IMAGE and os.path.exists(BACKGROUND_IMAGE):
+            # 加载背景图片并缩放以适应窗口
+            background = QPixmap(BACKGROUND_IMAGE).scaled(
+                self.size(), 
+                Qt.IgnoreAspectRatio, 
+                Qt.SmoothTransformation
+            )
+            palette.setBrush(QPalette.Window, QBrush(background))
+        else:
+            # 如果图片不存在，使用半透明黑色背景
+            palette.setColor(QPalette.Window, QColor(30, 30, 40, 180))
+        
         self.setPalette(palette)
-
+    
     def resizeEvent(self, event):
         # 当窗口大小改变时，重新设置背景图片
         self.set_background()
         super().resizeEvent(event)
-
+    
     def init_ui(self):
         # 主控件
         central_widget = QWidget()
         central_widget.setObjectName("CentralWidget")
         central_widget.setStyleSheet("""
             #CentralWidget {
-                background-color: rgba(240, 240, 240, 255);
+                background-color: rgba(30, 30, 40, 180);
                 border-radius: 15px;
                 padding: 15px;
             }
             QLabel {
-                color: #333333;
+                color: #E0E0FF;
                 font-weight: bold;
             }
             QLineEdit {
-                background-color: rgba(255, 255, 255, 255);
-                color: #333333;
-                border: 1px solid #CCCCCC;
+                background-color: rgba(50, 50, 70, 200);
+                color: #FFFFFF;
+                border: 1px solid #5A5A8F;
                 border-radius: 5px;
                 padding: 5px;
             }
             QPushButton {
-                background-color: #E0E0E0;
-                color: #333333;
+                background-color: #4A4A7F;
+                color: #FFFFFF;
                 border: none;
                 border-radius: 5px;
                 padding: 8px 15px;
@@ -1683,48 +1725,29 @@ class ShadowverseAutomationUI(QMainWindow):
                 min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #CCCCCC;
+                background-color: #5A5A9F;
             }
             QPushButton:pressed {
-                background-color: #AAAAAA;
+                background-color: #3A3A6F;
             }
             QTextEdit {
-                background-color: rgba(255, 255, 255, 255);
-                color: #333333;
-                border: 1px solid #CCCCCC;
+                background-color: rgba(25, 25, 35, 220);
+                color: #66AAFF;
+                border: 1px solid #444477;
                 border-radius: 5px;
-            }
-            QComboBox {
-                background-color: rgba(255, 255, 255, 255);
-                color: #333333;
-                border: 1px solid #CCCCCC;
-                border-radius: 5px;
-                padding: 5px;
-                min-width: 120px;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 20px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid #666666;
-                margin-right: 5px;
             }
             #StatsFrame {
-                background-color: rgba(255, 255, 255, 240);
-                border: 1px solid #CCCCCC;
+                background-color: rgba(40, 40, 60, 200);
+                border: 1px solid #555588;
                 border-radius: 8px;
                 padding: 10px;
             }
             .StatLabel {
-                color: #333333;
+                color: #AACCFF;
                 font-size: 14px;
             }
             .StatValue {
-                color: #555555;
+                color: #FFFF88;
                 font-size: 16px;
                 font-weight: bold;
             }
@@ -1750,63 +1773,82 @@ class ShadowverseAutomationUI(QMainWindow):
             #CloseButton:hover {
                 background-color: rgba(255, 0, 0, 100);
             }
+            QComboBox {
+                background-color: rgba(50, 50, 70, 200);
+                color: #FFFFFF;
+                border: 1px solid #5A5A8F;
+                border-radius: 5px;
+                padding: 5px;
+                min-width: 100px;
+            }
         """)
-
+        
         main_layout = QVBoxLayout(central_widget)
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(10, 10, 10, 10)
-
+        
         # 顶部栏布局
         top_bar_layout = QHBoxLayout()
         top_bar_layout.setContentsMargins(0, 0, 0, 0)
         top_bar_layout.setSpacing(15)
-
+        
         # 添加程序标题
-        title_label = QLabel("Shadowverse自动化脚本[免费]  Q群892100160")
+        title_label = QLabel("Shadowverse 自动化脚本[免费]")
         title_label.setObjectName("TitleLabel")
         top_bar_layout.addWidget(title_label)
-
+        
         # 添加空白区域使按钮靠右
         top_bar_layout.addStretch()
-
+        
         # 添加窗口控制按钮
         self.minimize_btn = QPushButton("－")
         self.minimize_btn.setObjectName("WindowControlButton")
         self.minimize_btn.clicked.connect(self.showMinimized)
-
+        
         self.maximize_btn = QPushButton("□")
         self.maximize_btn.setObjectName("WindowControlButton")
         self.maximize_btn.clicked.connect(self.toggle_maximize)
-
+        
         self.close_btn = QPushButton("×")
         self.close_btn.setObjectName("WindowControlButton")
         self.close_btn.setObjectName("CloseButton")
         self.close_btn.clicked.connect(self.close)
-
+        
         top_bar_layout.addWidget(self.minimize_btn)
         top_bar_layout.addWidget(self.maximize_btn)
         top_bar_layout.addWidget(self.close_btn)
-
+        
         main_layout.addLayout(top_bar_layout)
-
+        
         # ADB 连接部分
         adb_layout = QHBoxLayout()
+        
+        # 添加服务器选择框
+        server_label = QLabel("服务器:")
+        self.server_combo = QComboBox()
+        self.server_combo.addItems(["国服", "国际服"])
+        self.server_combo.currentTextChanged.connect(self.server_changed)
+        
+        adb_layout.addWidget(server_label)
+        adb_layout.addWidget(self.server_combo)
+        adb_layout.addSpacing(20)
+        
         adb_label = QLabel("ADB 端口:")
-        self.adb_input = QLineEdit(f"127.0.0.1:{self.config["emulator_port"]}")
+        self.adb_input = QLineEdit(f"127.0.0.1:{self.config['emulator_port']}")
         self.start_btn = QPushButton("开始")
         self.start_btn.clicked.connect(self.start_script)
-
+        
         adb_layout.addWidget(adb_label)
         adb_layout.addWidget(self.adb_input)
         adb_layout.addWidget(self.start_btn)
         adb_layout.addStretch()
-
+        
         status_label = QLabel("状态:")
         self.status_label = QLabel("未连接")
         self.status_label.setStyleSheet("color: #FF5555;")
         adb_layout.addWidget(status_label)
         adb_layout.addWidget(self.status_label)
-
+        
         main_layout.addLayout(adb_layout)
 
         # 新增：换牌策略配置部分（移除开关，默认启用）
@@ -1832,75 +1874,124 @@ class ShadowverseAutomationUI(QMainWindow):
         strategy_layout.addStretch()
 
         main_layout.addLayout(strategy_layout)
-
+        
         # 控制按钮
         btn_layout = QHBoxLayout()
         self.resume_btn = QPushButton("恢复")
         self.pause_btn = QPushButton("暂停")
         self.stats_btn = QPushButton("显示统计")
         self.stop_btn = QPushButton("停止/关闭")
-
+        
         self.resume_btn.clicked.connect(self.resume_script)
         self.stop_btn.clicked.connect(self.stop_script)
         self.pause_btn.clicked.connect(self.pause_script)
         self.stats_btn.clicked.connect(self.show_stats)
-
+        
         btn_layout.addWidget(self.resume_btn)
         btn_layout.addWidget(self.pause_btn)
         btn_layout.addWidget(self.stats_btn)
         btn_layout.addWidget(self.stop_btn)
         btn_layout.addStretch()
-
+        
         main_layout.addLayout(btn_layout)
+        
+        # 攻击延迟设置
+        delay_layout = QHBoxLayout()
+        delay_label = QLabel("攻击延迟:")
+        self.delay_input = QLineEdit()
+        self.delay_input.setFixedWidth(60)
+        # 设置验证器，允许0.1到2.0的浮点数
+        self.delay_input.setValidator(QDoubleValidator(0.1, 2.0, 2, self))
+        delay_tip = QLabel("设定范围推荐0.6~0.9秒")
+        delay_tip.setStyleSheet("color: #AAAAAA; font-size: 12px;")
 
+        delay_layout.addWidget(delay_label)
+        delay_layout.addWidget(self.delay_input)
+        delay_layout.addWidget(delay_tip)
+        delay_layout.addStretch()
+
+        # 添加到主布局
+        main_layout.addLayout(delay_layout)
+        
+        # 拖拽延迟设置 - 新增
+        drag_delay_layout = QHBoxLayout()
+        drag_delay_label = QLabel("拖拽延迟:")
+        self.drag_delay_input = QLineEdit()
+        self.drag_delay_input.setFixedWidth(60)
+        # 设置验证器，允许0.01到0.5的浮点数
+        self.drag_delay_input.setValidator(QDoubleValidator(0.01, 0.5, 3, self))
+        drag_delay_tip = QLabel("推荐参数0.1秒")
+        drag_delay_tip.setStyleSheet("color: #AAAAAA; font-size: 12px;")
+
+        drag_delay_layout.addWidget(drag_delay_label)
+        drag_delay_layout.addWidget(self.drag_delay_input)
+        drag_delay_layout.addWidget(drag_delay_tip)
+        drag_delay_layout.addStretch()
+
+        # 添加到主布局
+        main_layout.addLayout(drag_delay_layout)
+        
         # 统计信息面板
         stats_frame = QFrame()
         stats_frame.setObjectName("StatsFrame")
         stats_layout = QGridLayout(stats_frame)
         stats_layout.setHorizontalSpacing(30)
         stats_layout.setVerticalSpacing(10)
-
+        
         # 第一行统计信息
         stats_layout.addWidget(QLabel("当前回合:"), 0, 0)
         self.current_turn_label = QLabel("0")
         self.current_turn_label.setObjectName("StatValue")
         stats_layout.addWidget(self.current_turn_label, 0, 1)
-
+        
         stats_layout.addWidget(QLabel("运行时间:"), 0, 2)
         self.run_time_label = QLabel("00:00:00")
         self.run_time_label.setObjectName("StatValue")
         stats_layout.addWidget(self.run_time_label, 0, 3)
-
+        
         # 第二行统计信息
         stats_layout.addWidget(QLabel("对战次数:"), 1, 0)
         self.battle_count_label = QLabel("0")
         self.battle_count_label.setObjectName("StatValue")
         stats_layout.addWidget(self.battle_count_label, 1, 1)
-
+        
         stats_layout.addWidget(QLabel("回合总数:"), 1, 2)
         self.turn_count_label = QLabel("0")
         self.turn_count_label.setObjectName("StatValue")
         stats_layout.addWidget(self.turn_count_label, 1, 3)
-
+        
         main_layout.addWidget(stats_frame)
-
+        
         # 运行日志标题
         log_title = QLabel("运行日志:")
         log_title.setStyleSheet("font-size: 16px; color: #88AAFF;")
         main_layout.addWidget(log_title)
-
+        
         # 日志区域
         self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
         main_layout.addWidget(self.log_output)
-
+        
         self.setCentralWidget(central_widget)
-
+        
         # 初始化按钮状态
         self.resume_btn.setEnabled(False)
         self.stop_btn.setEnabled(False)
         self.pause_btn.setEnabled(False)
         self.stats_btn.setEnabled(False)
+        
+        # 初始化攻击延迟输入框
+        self.delay_input.setText(str(self.config.get("attack_delay", 0.25)))
+        self.delay_input.textChanged.connect(self.update_attack_delay)
+        
+        # 初始化拖拽延迟输入框
+        self.drag_delay_input.setText(str(self.config.get("extra_drag_delay", 0.05)))
+        self.drag_delay_input.textChanged.connect(self.update_drag_delay)
+        
+        # 设置服务器选择框的初始值
+        server_index = self.server_combo.findText(self.config["server"])
+        if server_index >= 0:
+            self.server_combo.setCurrentIndex(server_index)
 
     def toggle_maximize(self):
         if self.is_maximized:
@@ -1911,6 +2002,42 @@ class ShadowverseAutomationUI(QMainWindow):
             self.showMaximized()
             self.maximize_btn.setText("❐")
             self.is_maximized = True
+
+    def server_changed(self, server):
+        """服务器选择改变事件"""
+        self.log_output.append(f"服务器已更改为: {server}")
+        self.config["server"] = server
+        
+        # 保存配置
+        try:
+            with open("config.json", 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, indent=2)
+        except Exception as e:
+            self.log_output.append(f"保存配置失败: {str(e)}")
+            
+    def update_attack_delay(self, text):
+        """更新攻击延迟配置"""
+        try:
+            value = float(text)
+            self.config["attack_delay"] = value
+            with open("config.json", 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, indent=2)
+            self.log_output.append(f"攻击延迟已设置为: {value}秒")
+        except ValueError:
+            # 忽略无效输入
+            pass
+            
+    def update_drag_delay(self, text):
+        """更新拖拽延迟配置"""
+        try:
+            value = float(text)
+            self.config["extra_drag_delay"] = value
+            with open("config.json", 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, indent=2)
+            self.log_output.append(f"拖拽延迟已设置为: {value}秒")
+        except ValueError:
+            # 忽略无效输入
+            pass
 
     def start_script(self):
         self.log_output.append("正在连接设备...")
@@ -1942,12 +2069,44 @@ class ShadowverseAutomationUI(QMainWindow):
         self.stop_btn.setEnabled(True)
         self.pause_btn.setEnabled(True)
         self.stats_btn.setEnabled(True)
-
+        self.timer.start(1000)  # 每秒更新一次运行时间
 
     # 简化获取换牌策略的方法
     def get_replacement_strategy(self):
         """获取当前选择的换牌策略"""
         return self.strategy_combo.currentText()
+
+    def resume_script(self):
+        if self.script_thread:
+            self.script_thread.resume()
+            self.resume_btn.setEnabled(False)
+
+    def handle_script_error(self, error_msg):
+        self.log_output.append(f"脚本线程错误，请关闭并重启脚本后尝试，错误信息:\n {error_msg}")
+        if self.script_thread:
+            self.script_thread.stop()
+            self.script_thread.wait()
+        # 重置按钮状态
+        self.start_btn.setEnabled(False)
+        self.resume_btn.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+
+    def stop_script(self):
+        if self.script_thread:
+            self.log_output.append(f"脚本已停止")
+            self.script_thread.stop()
+            self.start_btn.setEnabled(False)
+            self.resume_btn.setEnabled(False)
+            self.stop_btn.setEnabled(False)
+            self.pause_btn.setEnabled(False)
+            self.timer.stop()
+            self.close()
+
+    def pause_script(self):
+        if self.script_thread:
+            self.script_thread.pause()
+            self.resume_btn.setEnabled(True)
 
     def show_stats(self):
         self.log_output.append("===== 对战统计 =====")
@@ -1956,6 +2115,7 @@ class ShadowverseAutomationUI(QMainWindow):
         self.log_output.append(f"平均回合数: {self.calculate_avg_turns()}")
         # 显示当前换牌策略
         self.log_output.append(f"换牌策略: {self.strategy_combo.currentText()}")
+        # self.log_output.append(f"换牌策略: {self.get_replacement_strategy()}")
 
     # 策略说明对话框保持不变
     def show_strategy_help(self):
@@ -1988,42 +2148,6 @@ class ShadowverseAutomationUI(QMainWindow):
         msg.setText(help_text)
         msg.setIcon(QMessageBox.Information)
         msg.exec_()
-
-    def resume_script(self):
-        if self.script_thread:
-            self.script_thread.resume()
-            self.resume_btn.setEnabled(False)
-
-    def handle_script_error(self, error_msg):
-        self.log_output.append(f"脚本线程错误，请关闭并重启脚本后尝试，错误信息:\n {error_msg}")
-        if self.script_thread:
-            self.script_thread.stop()
-            self.script_thread.wait()
-        # 重置按钮状态
-        self.start_btn.setEnabled(False)
-        self.resume_btn.setEnabled(False)
-        self.stop_btn.setEnabled(False)
-        self.pause_btn.setEnabled(False)
-
-    def stop_script(self):
-        if self.script_thread:
-            self.log_output.append(f"脚本已停止")
-            self.start_btn.setEnabled(False)
-            self.resume_btn.setEnabled(False)
-            self.stop_btn.setEnabled(False)
-            self.pause_btn.setEnabled(False)
-            self.close()
-
-    def pause_script(self):
-        if self.script_thread:
-            self.script_thread.pause()
-            self.resume_btn.setEnabled(True)
-
-    def show_stats(self):
-        self.log_output.append("===== 对战统计 =====")
-        self.log_output.append(f"总对战次数: {self.battle_count_label.text()}")
-        self.log_output.append(f"总回合数: {self.turn_count_label.text()}")
-        self.log_output.append(f"平均回合数: {self.calculate_avg_turns()}")
 
     def calculate_avg_turns(self):
         battle_count = int(self.battle_count_label.text())
@@ -2079,4 +2203,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"程序崩溃: {e}")
         # 弹窗提示错误
-        QMessageBox.critical(None, "错误", f"程序崩溃: {e}")
+        QMessageBox.critical(None， "错误", f"程序崩溃: {e}")
