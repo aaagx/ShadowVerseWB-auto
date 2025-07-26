@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QPalette, QColor, QPixmap, QBrush, QDoubleValidator
 from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtGui import QIntValidator  
 
 # 当前版本号
 CURRENT_VERSION = "1.2.0"
@@ -49,7 +50,11 @@ DEFAULT_CONFIG = {
     "server": "国服",  # 默认服务器
     "version": CURRENT_VERSION,  # 当前版本
     "attack_delay": 0.25,  # 新增：攻击延迟默认值
-    "extra_drag_delay": 0.05   # 新增：拖拽操作后的额外延迟
+    "extra_drag_delay": 0.05,  # 新增：拖拽操作后的额外延迟
+    "inactivity_timeout": 300,  # 新增：挂机时长默认5分钟
+    "inactivity_timeout_hours": 0, # 新增：挂机时长小时数
+    "inactivity_timeout_minutes": 5, # 新增：挂机时长分钟数
+    "inactivity_timeout_seconds": 0, # 新增：挂机时长秒数
 }
 
 def load_config():
@@ -1127,7 +1132,6 @@ class ScriptThread(QThread):
             # 新增：活动监控变量
             last_activity_time = time.time()  # 记录最后一次有效操作时间
             INACTIVITY_TIMEOUT = 300  # 5分钟无操作超时（300秒）
-            app_package = self.config.get("app_package", "jp.co.cygames.ShadowverseWorldsBeyond")  # 游戏包名，需要在配置中添加
 
             # 初始化设备对象
             device = None
@@ -1282,24 +1286,37 @@ class ScriptThread(QThread):
                 self.status_signal.emit("连接失败")
                 return
 
-            # 新增：重启应用的函数
             def restart_app():
-                """重启游戏应用"""
+                """根据配置的服务器重启对应应用"""
                 try:
-                    self.log_signal.emit("检测到5分钟无活动，正在重启应用防止卡死...")
-
-                    # 强制停止应用
-                    self.adb_device.shell(f"am force-stop {app_package}")
+                    # 从配置中获取当前服务器设置
+                    current_server = self.config.get("server", "国际服")  # 默认为国际服
+                    
+                    # 根据服务器选择目标包名
+                    if current_server == "国服":
+                        target_package = self.config.get("CNapp_package", "com.netease.yzs")
+                        server_name = "国服"
+                    else:  # 默认处理国际服
+                        target_package = self.config.get("app_package", "jp.co.cygames.ShadowverseWorldsBeyond")
+                        server_name = "国际服"
+                    
+                    self.log_signal.emit(f"检测到5分钟无活动，正在重启{server_name}应用...")
+                    
+                    # 强制停止目标应用
+                    self.adb_device.shell(f"am force-stop {target_package}")
                     time.sleep(2)
 
-                    # 重新启动应用
-                    self.adb_device.shell(f"monkey -p {app_package} -c android.intent.category.LAUNCHER 1")
+                    # 重新启动目标应用
+                    self.adb_device.shell(f"monkey -p {target_package} -c android.intent.category.LAUNCHER 1")
                     time.sleep(5)  # 等待应用启动
 
-                    self.log_signal.emit("应用重启完成")
+                    self.log_signal.emit(f"{server_name}应用重启完成")
                     return True
                 except Exception as e:
-                    self.log_signal.emit(f"重启应用失败: {str(e)}")
+                    # 在异常处理中使用配置值作为后备
+                    current_server = self.config.get("server", "国际服")
+                    server_name = "国服" if current_server == "国服" else "国际服"
+                    self.log_signal.emit(f"重启{server_name}应用失败: {str(e)}")
                     return False
 
             # 新增：重置活动计时器的函数
@@ -1961,7 +1978,55 @@ class ShadowverseAutomationUI(QMainWindow):
         stats_layout.addWidget(self.turn_count_label, 1, 3)
         
         main_layout.addWidget(stats_frame)
+
+        # === 新增：挂机时长设置 ===
+        close_layout = QHBoxLayout()
+        close_label = QLabel("自动关闭:")
         
+        # 修复：创建输入框实例
+        self.close_hours_input = QLineEdit()
+        self.close_minutes_input = QLineEdit()
+        self.close_seconds_input = QLineEdit()
+
+        # 设置挂机时长输入框的初始值
+        total_timeout = self.config.get("inactivity_timeout", 300)
+        hours = total_timeout // 3600
+        minutes = (total_timeout % 3600) // 60
+        seconds = total_timeout % 60
+
+        self.close_hours_input.setText(str(hours))
+        self.close_hours_input.setFixedWidth(40)
+        self.close_hours_input.setValidator(QIntValidator(0, 23, self))
+        hours_label = QLabel("时")
+
+        self.close_minutes_input.setText(str(minutes))
+        self.close_minutes_input.setFixedWidth(40)
+        self.close_minutes_input.setValidator(QIntValidator(0, 59, self))
+        minutes_label = QLabel("分")
+
+        self.close_seconds_input.setText(str(seconds))
+        self.close_seconds_input.setFixedWidth(40)
+        self.close_seconds_input.setValidator(QIntValidator(0, 59, self))
+        seconds_label = QLabel("秒")
+
+        # 保存按钮
+        self.save_close_btn = QPushButton("设置")
+        self.save_close_btn.setFixedWidth(60)
+        self.save_close_btn.clicked.connect(self.save_close_settings)
+
+        close_layout.addWidget(close_label)
+        close_layout.addWidget(self.close_hours_input)
+        close_layout.addWidget(hours_label)
+        close_layout.addWidget(self.close_minutes_input)
+        close_layout.addWidget(minutes_label)
+        close_layout.addWidget(self.close_seconds_input)
+        close_layout.addWidget(seconds_label)
+        close_layout.addWidget(self.save_close_btn)
+        close_layout.addStretch()
+
+        # 将这个布局移动到adb_layout之后
+        main_layout.insertLayout(2, close_layout)
+
         # 运行日志标题
         log_title = QLabel("运行日志:")
         log_title.setStyleSheet("font-size: 16px; color: #88AAFF;")
@@ -1992,6 +2057,16 @@ class ShadowverseAutomationUI(QMainWindow):
         server_index = self.server_combo.findText(self.config["server"])
         if server_index >= 0:
             self.server_combo.setCurrentIndex(server_index)
+
+        # 设置挂机时长输入框的初始值
+        total_timeout = self.config.get("inactivity_timeout", 300)
+        hours = total_timeout // 3600
+        minutes = (total_timeout % 3600) // 60
+        seconds = total_timeout % 60
+
+        self.close_hours_input.setText(str(hours))
+        self.close_minutes_input.setText(str(minutes))
+        self.close_seconds_input.setText(str(seconds))
 
     def toggle_maximize(self):
         if self.is_maximized:
@@ -2093,6 +2168,8 @@ class ShadowverseAutomationUI(QMainWindow):
         self.pause_btn.setEnabled(False)
 
     def stop_script(self):
+        if hasattr(self, 'close_timer'):
+            self.close_timer.stop()
         if self.script_thread:
             self.log_output.append(f"脚本已停止")
             self.script_thread.stop()
@@ -2193,6 +2270,39 @@ class ShadowverseAutomationUI(QMainWindow):
             self.script_thread.stop()
             self.script_thread.wait()
         event.accept()
+
+    def save_close_settings(self):
+        """保存自动关闭设置"""
+        try:
+            hours = int(self.close_hours_input.text())
+            minutes = int(self.close_minutes_input.text())
+            seconds = int(self.close_seconds_input.text())
+            
+            total_seconds = hours * 3600 + minutes * 60 + seconds
+
+            if total_seconds > 0:
+                self.log_output.append(f"脚本将在 {hours}时{minutes}分{seconds}秒 后自动关闭")
+                # 设置定时器
+                if hasattr(self, 'close_timer'):
+                    self.close_timer.stop()
+                self.close_timer = QTimer()
+                self.close_timer.timeout.connect(lambda: self.close_after_timeout(total_seconds))
+                self.close_timer.start(1000)  # 每秒检查一次
+            else:
+                if hasattr(self, 'close_timer'):
+                    self.close_timer.stop()
+                    self.log_output.append("已取消自动关闭设置")
+        except ValueError:
+            QMessageBox.warning(self, "错误", "请输入有效的数字！")
+
+    def close_after_timeout(self, remaining):
+        """倒计时关闭"""
+        remaining -= 1
+        if remaining <= 0:
+            self.stop_script()
+        elif remaining % 60 == 0:  # 每分钟提醒一次
+            mins = remaining // 60
+            self.log_output.append(f"脚本将在 {mins} 分钟后自动关闭...")
 
 if __name__ == "__main__":
     try:
